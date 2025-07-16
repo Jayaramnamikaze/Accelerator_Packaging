@@ -4,7 +4,7 @@
 
 ```bash
 # 1. Install dependencies
-uv sync --group dev
+uv sync --extra dev
 
 # 2. Install pre-commit hooks (REQUIRED!)
 uv run pre-commit install
