@@ -458,10 +458,26 @@ class TableauXMLParser:
             data["tables"] = joins_and_rels["tables"]
             data["relationships"] = joins_and_rels["relationships"]
 
-            # Extract connections
-            data["connections"] = [
-                self.extract_connection(conn) for conn in ds.findall(".//connection")
-            ]
+            # Extract connections - handle both direct connections and named connections
+            connections = []
+            
+            # First, check for named connections (federated connections)
+            for named_conn in ds.findall(".//named-connection"):
+                conn_element = named_conn.find("connection")
+                if conn_element is not None:
+                    conn_data = self.extract_connection(conn_element)
+                    # Use the named-connection's name and caption
+                    conn_data["name"] = named_conn.get("name", "")
+                    conn_data["caption"] = named_conn.get("caption", "")
+                    connections.append(conn_data)
+            
+            # Then, check for direct connections (not nested in named-connection)
+            for conn in ds.findall(".//connection"):
+                # Skip connections that are already handled as named connections
+                if conn.getparent().tag != "named-connection":
+                    connections.append(self.extract_connection(conn))
+            
+            data["connections"] = connections
 
             datasources.append(data)
 
