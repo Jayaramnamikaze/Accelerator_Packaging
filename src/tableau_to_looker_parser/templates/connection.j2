@@ -16,15 +16,15 @@ connection: "{{ connection_name or 'default_connection' }}" {
   {% if username %}username: "{{ username }}"{% endif %}
   {% if schema %}schema: "{{ schema }}"{% endif %}
   {% endif %}
-  
+
   # Additional connection parameters
   max_connections: 100
   pool_timeout: 300
-  
+
   # SSL and security settings (if applicable)
   {% if connection.ssl_enabled %}
   ssl: yes
   {% endif %}
-  
+
   # Generated from Tableau connection: {{ database_type }}
 }

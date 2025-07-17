@@ -11,7 +11,7 @@ This document tracks the completion status of Phase 1 requirements as outlined i
 #### Plugin Registry (`core/plugin_registry.py`)
 - ✅ Basic implementation exists
 - ✅ register_handler() method implemented
-- ✅ get_handler() method implemented  
+- ✅ get_handler() method implemented
 - ✅ register_fallback() method implemented
 - ❌ Thread-safe implementation missing
 - ❌ Unit tests missing (`tests/test_plugin_registry.py`)

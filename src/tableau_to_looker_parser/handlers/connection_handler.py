@@ -119,7 +119,7 @@ class ConnectionHandler(BaseHandler):
                     connection_name = f"bigquery_{dataset.lower()}"
                 else:
                     connection_name = "bigquery_default"
-            
+
             # Create BigQuery connection
             conn = BigQueryConnectionSchema(
                 type=DatabaseType.BIGQUERY,

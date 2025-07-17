@@ -15,7 +15,7 @@ explore: {{ explore.name | clean_name }} {
   {% if explore.description %}
   description: "{{ explore.description }}"
   {% endif %}
-  
+
   {% if explore.joins %}
   {% for join in explore.joins %}
   join: {{ join.view_name | clean_name }} {

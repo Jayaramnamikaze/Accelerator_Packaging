@@ -1,18 +1,18 @@
 view: {{ view_name }} {
   # Generated from Tableau view: {{ view.original_name if view.original_name else view.name }}
-  
+
   {% if table_name %}
   sql_table_name: {{ table_name }} ;;
   {% endif %}
-  
+
   {% if view.description %}
   description: "{{ view.description }}"
   {% endif %}
-  
+
   # Dimensions
   {% if has_dimensions %}
   {% for dimension in dimensions %}
-  
+
   dimension: {{ dimension.name | clean_name }} {
     {% if dimension.description %}
     description: "{{ dimension.description }}"
@@ -46,11 +46,11 @@ view: {{ view_name }} {
     {% endif %}
   }
   {% endfor %}
-  
+
   # Date dimension groups
   {% for dimension in dimensions %}
   {% if dimension.type == 'date' or dimension.type == 'datetime' %}
-  
+
   dimension_group: {{ dimension.name | clean_name }} {
     type: time
     timeframes: [raw, time, date, week, month, quarter, year]
@@ -61,11 +61,11 @@ view: {{ view_name }} {
   {% endif %}
   {% endfor %}
   {% endif %}
-  
+
   # Measures
   {% if has_measures %}
   {% for measure in measures %}
-  
+
   measure: {{ measure.name | clean_name }} {
     {% if measure.description %}
     description: "{{ measure.description }}"
@@ -112,11 +112,11 @@ view: {{ view_name }} {
   }
   {% endfor %}
   {% endif %}
-  
+
   # Basic measures for counting
   measure: count {
     type: count
     description: "Count of records"
   }
-  
+
 }
