@@ -3,7 +3,7 @@ LookML generator for converting JSON intermediate format to LookML files.
 """
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 import logging
 
 from .template_engine import TemplateEngine
@@ -242,32 +242,88 @@ class LookMLGenerator:
                             right_field = right_parts[1]
 
                             # Determine which table is the join target (not the primary table)
-                            join_table = None
+                            join_table_alias = None
                             if (
                                 left_table != primary_table["name"]
                                 and left_table in table_aliases
                             ):
-                                join_table = left_table
+                                join_table_alias = left_table
                                 join_field = left_field
                                 primary_field = right_field
                             elif (
                                 right_table != primary_table["name"]
                                 and right_table in table_aliases
                             ):
-                                join_table = right_table
+                                join_table_alias = right_table
                                 join_field = right_field
                                 primary_field = left_field
 
-                            if join_table and join_table not in existing_joins:
-                                # Create join for the alias table
-                                join = {
-                                    "view_name": join_table,
-                                    "type": relationship.get("join_type", "inner"),
-                                    "sql_on": f"${{{primary_table['name']}}}.{primary_field} = ${{{join_table}}}.{join_field}",
-                                    "relationship": "one_to_one",
-                                }
-                                explore["joins"].append(join)
-                                existing_joins.add(join_table)
+                            if (
+                                join_table_alias
+                                and join_table_alias not in existing_joins
+                            ):
+                                # Check if this is a self-join (alias points to same table as primary)
+                                table_ref = table_aliases.get(join_table_alias)
+                                primary_table_ref = table_aliases.get(
+                                    primary_table["name"]
+                                )
+
+                                if (
+                                    table_ref
+                                    and primary_table_ref
+                                    and table_ref == primary_table_ref
+                                ):
+                                    # This is a self-join - check if multiple aliases exist for this table
+                                    current_table_aliases = relationship.get(
+                                        "table_aliases", {}
+                                    )
+
+                                    # Group aliases by their table reference
+                                    table_refs = {}
+                                    for (
+                                        alias,
+                                        table_ref_check,
+                                    ) in current_table_aliases.items():
+                                        if table_ref_check not in table_refs:
+                                            table_refs[table_ref_check] = []
+                                        table_refs[table_ref_check].append(alias)
+
+                                    # Check if this table has multiple aliases (self-join)
+                                    has_multiple_aliases = any(
+                                        len(aliases) > 1
+                                        for aliases in table_refs.values()
+                                    )
+
+                                    if has_multiple_aliases:
+                                        # True self-join - keep the alias name
+                                        view_name = join_table_alias
+
+                                        # Create join using appropriate name
+                                        join = {
+                                            "view_name": view_name,
+                                            "type": relationship.get(
+                                                "join_type", "inner"
+                                            ),
+                                            "sql_on": f"${{{primary_table['name']}}}.{primary_field} = ${{{view_name}}}.{join_field}",
+                                            "relationship": "one_to_one",
+                                        }
+                                        explore["joins"].append(join)
+                                        existing_joins.add(join_table_alias)
+                                else:
+                                    # Different table - resolve alias to actual table name
+                                    view_name = self._resolve_table_alias(
+                                        join_table_alias, table_aliases, tables
+                                    )
+
+                                    # Create join using appropriate name
+                                    join = {
+                                        "view_name": view_name,
+                                        "type": relationship.get("join_type", "inner"),
+                                        "sql_on": f"${{{primary_table['name']}}}.{primary_field} = ${{{view_name}}}.{join_field}",
+                                        "relationship": "one_to_one",
+                                    }
+                                    explore["joins"].append(join)
+                                    existing_joins.add(join_table_alias)
 
             # Only create one primary explore to avoid duplicates
             explores = [explore]
@@ -282,14 +338,47 @@ class LookMLGenerator:
                     )
                     break
 
+            # Collect all view names needed (including self-join aliases)
+            view_names_for_model = set()
+
+            # Add actual table names
+            for table in migration_data.get("tables", []):
+                view_names_for_model.add(table["name"])
+
+            # Add self-join aliases: check each physical relationship for self-joins
+            actual_table_names = [
+                table["name"] for table in migration_data.get("tables", [])
+            ]
+
+            for relationship in migration_data.get("relationships", []):
+                if relationship.get("relationship_type") == "physical":
+                    table_aliases = relationship.get("table_aliases", {})
+
+                    # Group aliases by their table reference
+                    table_refs = {}
+                    for alias, table_ref in table_aliases.items():
+                        if table_ref not in table_refs:
+                            table_refs[table_ref] = []
+                        table_refs[table_ref].append(alias)
+
+                    # For each table that has multiple aliases, it's a self-join
+                    for table_ref, aliases in table_refs.items():
+                        if (
+                            len(aliases) > 1
+                        ):  # Multiple aliases for same table = self-join
+                            for alias in aliases:
+                                if (
+                                    alias not in actual_table_names
+                                ):  # Only add non-table aliases
+                                    view_names_for_model.add(alias)
+
             context = {
                 "project_name": migration_data.get("metadata", {}).get(
                     "project_name", "tableau_migration"
                 ),
                 "connection_name": connection_name,
                 "views": [
-                    {"name": table["name"]}
-                    for table in migration_data.get("tables", [])
+                    {"name": view_name} for view_name in sorted(view_names_for_model)
                 ],
                 "explores": explores,
             }
@@ -357,18 +446,95 @@ class LookMLGenerator:
 
             # Generate view files for all tables
             view_files = []
-            for table in migration_data.get("tables", []):
-                view_data = {
-                    "name": table["name"],
-                    "table_name": table["table"],
-                    "dimensions": migration_data.get("dimensions", [])[:5],
-                    "measures": migration_data.get("measures", [])[:3],
-                }
-                from types import SimpleNamespace
+            all_dimensions = migration_data.get("dimensions", [])
+            all_measures = migration_data.get("measures", [])
 
-                view = SimpleNamespace(**view_data)
-                view_file = self.generate_view_file(view, output_dir)
-                view_files.append(view_file)
+            # Collect all view names needed (including self-join aliases)
+            view_names_needed = set()
+
+            # Add actual table names
+            for table in migration_data.get("tables", []):
+                view_names_needed.add(table["name"])
+
+            # Add self-join aliases: check each physical relationship for self-joins
+            actual_table_names = [
+                table["name"] for table in migration_data.get("tables", [])
+            ]
+
+            for relationship in migration_data.get("relationships", []):
+                if relationship.get("relationship_type") == "physical":
+                    table_aliases = relationship.get("table_aliases", {})
+
+                    # Group aliases by their table reference
+                    table_refs = {}
+                    for alias, table_ref in table_aliases.items():
+                        if table_ref not in table_refs:
+                            table_refs[table_ref] = []
+                        table_refs[table_ref].append(alias)
+
+                    # For each table that has multiple aliases, it's a self-join
+                    for table_ref, aliases in table_refs.items():
+                        if (
+                            len(aliases) > 1
+                        ):  # Multiple aliases for same table = self-join
+                            for alias in aliases:
+                                if (
+                                    alias not in actual_table_names
+                                ):  # Only add non-table aliases
+                                    view_names_needed.add(alias)
+
+            # Generate view files for all needed views
+            for view_name in view_names_needed:
+                # Find the actual table this view represents
+                actual_table = None
+                table_ref = None
+
+                # First check if it's an actual table name
+                for table in migration_data.get("tables", []):
+                    if table["name"] == view_name:
+                        actual_table = table
+                        table_ref = table["table"]
+                        break
+
+                # If not found, check if it's an alias
+                if not actual_table:
+                    for relationship in migration_data.get("relationships", []):
+                        table_aliases = relationship.get("table_aliases", {})
+                        if view_name in table_aliases:
+                            table_ref = table_aliases[view_name]
+                            # Find the actual table with this reference
+                            for table in migration_data.get("tables", []):
+                                if table["table"] == table_ref:
+                                    actual_table = table
+                                    break
+                            break
+
+                if actual_table:
+                    actual_table_name = actual_table["name"]
+
+                    # Filter dimensions and measures for this specific table
+                    table_dimensions = [
+                        dim
+                        for dim in all_dimensions
+                        if dim.get("table_name") == actual_table_name
+                    ]
+                    table_measures = [
+                        measure
+                        for measure in all_measures
+                        if measure.get("table_name") == actual_table_name
+                    ]
+
+                    view_data = {
+                        "name": view_name,
+                        "table_name": table_ref,
+                        "dimensions": table_dimensions,
+                        "measures": table_measures,
+                    }
+                    from types import SimpleNamespace
+
+                    view = SimpleNamespace(**view_data)
+                    view_file = self.generate_view_file(view, output_dir)
+                    view_files.append(view_file)
 
             generated_files["views"] = view_files
 
@@ -425,6 +591,37 @@ connection: "{context["connections"][0].name if context["connections"] else "def
     def _clean_view_name(self, name: str) -> str:
         """Clean view name for LookML."""
         return self.template_engine._clean_name_filter(name)
+
+    def _resolve_table_alias(
+        self, alias: str, table_aliases: Dict[str, str], tables: List[Dict]
+    ) -> str:
+        """Resolve a table alias to the actual table name from the tables array.
+
+        Args:
+            alias: Table alias to resolve
+            table_aliases: Mapping of aliases to table references
+            tables: List of actual table definitions
+
+        Returns:
+            Actual table name
+        """
+        # If alias is already an actual table name, return it
+        actual_table_names = [table["name"] for table in tables]
+        if alias in actual_table_names:
+            return alias
+
+        # Get the table reference from table_aliases
+        table_ref = table_aliases.get(alias)
+        if not table_ref:
+            return alias
+
+        # Find the actual table name that matches this reference
+        for table in tables:
+            if table["table"] == table_ref or table["name"] == table_ref:
+                return table["name"]
+
+        # If no match found, return the alias as fallback
+        return alias
 
     def validate_output_directory(self, output_dir: str) -> bool:
         """

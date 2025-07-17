@@ -32,7 +32,20 @@ def test_lookml_generator_book4():
         assert "connection" in generated_files
         assert "views" in generated_files
         assert "model" in generated_files
-        assert len(generated_files["views"]) == len(data["tables"])
+
+        # Calculate expected number of views (tables + self-join aliases)
+        expected_views = len(data["tables"])
+        alias_views = set()
+        for relationship in data.get("relationships", []):
+            table_aliases = relationship.get("table_aliases", {})
+            for alias, table_ref in table_aliases.items():
+                # Check if this is a self-join alias (different from actual table name)
+                for table in data["tables"]:
+                    if table["table"] == table_ref and alias != table["name"]:
+                        alias_views.add(alias)
+        expected_views += len(alias_views)
+
+        assert len(generated_files["views"]) == expected_views
 
         # Validate content
         with open(generated_files["connection"], "r") as f:
