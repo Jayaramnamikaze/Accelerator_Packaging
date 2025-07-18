@@ -168,9 +168,7 @@ class ViewGenerator(BaseGenerator):
 
             # Write to file
             output_path = self._ensure_output_dir(output_dir)
-            view_filename = (
-                f"{self._clean_name(view_data['name'])}{self.lookml_extension}"
-            )
+            view_filename = f"{self._clean_name(view_data['name'])}{self.view_extension}{self.lookml_extension}"
             file_path = output_path / view_filename
 
             return self._write_file(content, file_path)
