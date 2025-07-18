@@ -762,6 +762,10 @@ class TableauXMLParser:
                 dimension_data["table_name"] = self._resolve_table_alias(
                     table_name, alias_mapping
                 )
+                # Add SQL column name from metadata records
+                dimension_data["sql_column"] = self._get_sql_column_name(
+                    datasource, raw_name
+                )
                 elements.append({"type": "dimension", "data": dimension_data})
 
             # Add parameters
@@ -819,6 +823,10 @@ class TableauXMLParser:
             if col_name:
                 # Strip brackets from column name
                 clean_col_name = col_name.strip("[]")
+
+                # Skip if we already have an exact match from metadata records
+                if clean_col_name in table_mapping:
+                    continue
 
                 # Try to find matching metadata record
                 for metadata in datasource.findall(
@@ -916,3 +924,27 @@ class TableauXMLParser:
 
         # Return the resolved table name or the original if not found
         return alias_mapping.get(table_name, table_name)
+
+    def _get_sql_column_name(self, datasource: Element, column_name: str) -> str:
+        """Get the SQL column name from metadata records.
+
+        Args:
+            datasource: Datasource element containing metadata records
+            column_name: Column name to look up
+
+        Returns:
+            SQL column name or the original column name if not found
+        """
+        # Look for metadata record with matching local-name
+        for metadata in datasource.findall(".//metadata-record[@class='column']"):
+            local_name_elem = metadata.find("local-name")
+            if local_name_elem is not None:
+                local_name = local_name_elem.text
+                if local_name and local_name.strip("[]") == column_name:
+                    # Found matching metadata record, get remote-alias
+                    remote_alias_elem = metadata.find("remote-alias")
+                    if remote_alias_elem is not None and remote_alias_elem.text:
+                        return remote_alias_elem.text
+
+        # If no metadata found, return the original column name
+        return column_name

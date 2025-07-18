@@ -277,6 +277,7 @@ class DimensionSchema(BaseModel):
     hidden: bool = False
     timeframes: Optional[List[TimeframeType]] = None
     sql: Optional[str] = None
+    sql_column: Optional[str] = None  # Database column name
     group_label: Optional[str] = None
     calculation: Optional[str] = None  # Calculated field formula
 
