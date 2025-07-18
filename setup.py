@@ -6,7 +6,7 @@ setup(
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     include_package_data=True,  # <--- IMPORTANT
-    package_data={"tableau_looker_parser": ["templates/**/*.j2"]},
+    package_data={"tableau_to_looker_parser": ["templates/*.j2"]},
     # OR (less strict if you have other assets)
     # package_data={"tableau_looker_parser": ["**/*.j2"]},
 )
