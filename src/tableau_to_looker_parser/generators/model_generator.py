@@ -49,7 +49,10 @@ class ModelGenerator(BaseGenerator):
 
             # Write to file
             output_path = self._ensure_output_dir(output_dir)
-            file_path = output_path / f"model{self.lookml_extension}"
+            file_path = (
+                output_path
+                / f"{connection_name}_model{self.model_extension}{self.lookml_extension}"
+            )
 
             return self._write_file(content, file_path)
 

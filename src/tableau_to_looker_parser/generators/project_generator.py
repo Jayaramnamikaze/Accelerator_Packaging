@@ -47,9 +47,9 @@ class ProjectGenerator(BaseGenerator):
             self._ensure_output_dir(output_dir)
 
             # Generate connection file
-            generated_files["connection"] = self._generate_connection(
-                migration_data, output_dir
-            )
+            # generated_files["connection"] = self._generate_connection(
+            # migration_data, output_dir
+            # )
 
             # Generate view files
             generated_files["views"] = self._generate_views(migration_data, output_dir)
