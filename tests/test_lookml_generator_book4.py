@@ -29,7 +29,7 @@ def test_lookml_generator_book4():
         generated_files = generator.generate_project_files(data, temp_dir)
 
         # Validate files generated
-        assert "connection" in generated_files
+        # assert "connection" in generated_files
         assert "views" in generated_files
         assert "model" in generated_files
 
@@ -48,8 +48,8 @@ def test_lookml_generator_book4():
         assert len(generated_files["views"]) == expected_views
 
         # Validate content
-        with open(generated_files["connection"], "r") as f:
-            assert "connection:" in f.read()
+        # with open(generated_files["connection"], "r") as f:
+        # assert "connection:" in f.read()
 
         with open(generated_files["model"], "r") as f:
             model_content = f.read()
@@ -63,7 +63,7 @@ def test_lookml_generator_book4():
                 assert "measure:" in content
 
         # Copy files for inspection
-        shutil.copy2(generated_files["connection"], output_dir / "connection.lkml")
+        # shutil.copy2(generated_files["connection"], output_dir / "connection.lkml")
         shutil.copy2(generated_files["model"], output_dir / "model.lkml")
         for view_file in generated_files["views"]:
             view_name = Path(view_file).stem

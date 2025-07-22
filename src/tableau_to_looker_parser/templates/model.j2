@@ -1,11 +1,11 @@
 # Generated LookML model
 # Project: {{ project_name }}
 
-connection: "{{ connection_name or 'default_connection' }}"
+connection: "{{ 'tableau_looker_poc' }}"
 
 # Include all views
 {% for view in views %}
-include: "{{ view.name | clean_name }}.lkml"
+include: "{{ view.name | clean_name }}.view.lkml"
 {% endfor %}
 
 # Explores

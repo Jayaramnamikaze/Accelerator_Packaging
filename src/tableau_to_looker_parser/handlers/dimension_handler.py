@@ -87,6 +87,7 @@ class DimensionHandler(BaseHandler):
             "description": self._build_description(data),
             "calculation": data.get("calculation"),
             "semantic_role": data.get("semantic_role"),
+            "sql_column": data.get("sql_column"),  # Include SQL column name
         }
 
         # Add range data if present

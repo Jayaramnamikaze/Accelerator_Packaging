@@ -23,6 +23,8 @@ class BaseGenerator:
         """
         self.template_engine = TemplateEngine(template_dir)
         self.lookml_extension = ".lkml"
+        self.view_extension = ".view"
+        self.model_extension = ".model"
 
         logger.debug(f"Initialized {self.__class__.__name__}")
 

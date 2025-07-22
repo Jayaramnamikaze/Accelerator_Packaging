@@ -149,6 +149,16 @@ class ViewGenerator(BaseGenerator):
 
         return None, None
 
+    def _format_table_name(self, table_name: str) -> str:
+        """Format table name from [schema].[table] to `schema.table`."""
+        if not table_name:
+            return table_name
+
+        # Remove square brackets and replace with backticks
+        # Convert [schema].[table] to `schema.table`
+        formatted = table_name.replace("[", "").replace("]", "").replace(".", ".")
+        return f"`{formatted}`"
+
     def _create_view_file(self, view_data: Dict, output_dir: str) -> str:
         """Create a single view file from view data."""
         try:
@@ -156,7 +166,7 @@ class ViewGenerator(BaseGenerator):
             context = {
                 "view": SimpleNamespace(**view_data),
                 "view_name": self._clean_name(view_data["name"]),
-                "table_name": view_data["table_name"],
+                "table_name": self._format_table_name(view_data["table_name"]),
                 "dimensions": view_data["dimensions"],
                 "measures": view_data["measures"],
                 "has_dimensions": len(view_data["dimensions"]) > 0,
@@ -168,9 +178,7 @@ class ViewGenerator(BaseGenerator):
 
             # Write to file
             output_path = self._ensure_output_dir(output_dir)
-            view_filename = (
-                f"{self._clean_name(view_data['name'])}{self.lookml_extension}"
-            )
+            view_filename = f"{self._clean_name(view_data['name'])}{self.view_extension}{self.lookml_extension}"
             file_path = output_path / view_filename
 
             return self._write_file(content, file_path)
