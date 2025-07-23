@@ -7,12 +7,19 @@ import logging
 from types import SimpleNamespace
 
 from .base_generator import BaseGenerator
+from ..converters.ast_to_lookml_converter import ASTToLookMLConverter
+from ..models.ast_schema import ASTNode
 
 logger = logging.getLogger(__name__)
 
 
 class ViewGenerator(BaseGenerator):
     """Generator for view.lkml files."""
+
+    def __init__(self, template_engine=None):
+        """Initialize the view generator with AST converter."""
+        super().__init__(template_engine)
+        self.ast_converter = ASTToLookMLConverter()
 
     def generate_views(self, migration_data: Dict, output_dir: str) -> List[str]:
         """
@@ -29,6 +36,7 @@ class ViewGenerator(BaseGenerator):
             view_files = []
             all_dimensions = migration_data.get("dimensions", [])
             all_measures = migration_data.get("measures", [])
+            all_calculated_fields = migration_data.get("calculated_fields", [])
 
             # Determine which views need to be generated
             view_names_needed = self._determine_view_names(migration_data)
@@ -36,7 +44,12 @@ class ViewGenerator(BaseGenerator):
             # Generate view file for each needed view
             for view_name in view_names_needed:
                 view_file = self._generate_single_view(
-                    view_name, migration_data, all_dimensions, all_measures, output_dir
+                    view_name,
+                    migration_data,
+                    all_dimensions,
+                    all_measures,
+                    all_calculated_fields,
+                    output_dir,
                 )
                 if view_file:
                     view_files.append(view_file)
@@ -97,6 +110,7 @@ class ViewGenerator(BaseGenerator):
         migration_data: Dict,
         all_dimensions: List[Dict],
         all_measures: List[Dict],
+        all_calculated_fields: List[Dict],
         output_dir: str,
     ) -> str:
         """Generate a single view file."""
@@ -119,12 +133,22 @@ class ViewGenerator(BaseGenerator):
             if measure.get("table_name") == actual_table_name
         ]
 
+        # Filter calculated fields for this specific table and convert AST to LookML
+        table_calculated_fields = []
+        for calc_field in all_calculated_fields:
+            if calc_field.get("table_name") == actual_table_name:
+                # Convert AST to LookML SQL using our converter
+                converted_field = self._convert_calculated_field(calc_field, view_name)
+                if converted_field:
+                    table_calculated_fields.append(converted_field)
+
         # Build view data
         view_data = {
             "name": view_name,
             "table_name": table_ref,
             "dimensions": table_dimensions,
             "measures": table_measures,
+            "calculated_fields": table_calculated_fields,
         }
 
         # Generate the view file
@@ -149,6 +173,57 @@ class ViewGenerator(BaseGenerator):
 
         return None, None
 
+    def _convert_calculated_field(self, calc_field: Dict, table_context: str) -> Dict:
+        """
+        Convert a calculated field with AST to LookML format.
+
+        Args:
+            calc_field: Calculated field data with AST
+            table_context: Table context for field references
+
+        Returns:
+            Dict with converted LookML field data
+        """
+        try:
+            # Extract AST from calculation
+            calculation = calc_field.get("calculation", {})
+            ast_data = calculation.get("ast", {})
+
+            if not ast_data:
+                logger.warning(
+                    f"No AST data found for calculated field: {calc_field.get('name')}"
+                )
+                return None
+
+            # Convert dict to ASTNode object
+            ast_node = ASTNode(**ast_data)
+
+            # Convert AST to LookML SQL expression
+            lookml_sql = self.ast_converter.convert_to_lookml(ast_node, "TABLE")
+
+            # Build LookML field definition
+            converted_field = {
+                "name": self._clean_name(calc_field.get("name", "")),
+                "original_name": calc_field.get("original_name", ""),
+                "field_type": calc_field.get("field_type", "dimension"),
+                "role": calc_field.get("role", "dimension"),
+                "datatype": calc_field.get("datatype", "string"),
+                "sql": lookml_sql,
+                "original_formula": calculation.get("original_formula", ""),
+                "description": f"Calculated field: {calculation.get('original_formula', '')}",
+            }
+
+            logger.debug(
+                f"Converted calculated field: {calc_field.get('name')} → {lookml_sql}"
+            )
+            return converted_field
+
+        except Exception as e:
+            logger.error(
+                f"Failed to convert calculated field {calc_field.get('name')}: {str(e)}"
+            )
+            return None
+
     def _format_table_name(self, table_name: str) -> str:
         """Format table name from [schema].[table] to `schema.table`."""
         if not table_name:
@@ -169,8 +244,10 @@ class ViewGenerator(BaseGenerator):
                 "table_name": self._format_table_name(view_data["table_name"]),
                 "dimensions": view_data["dimensions"],
                 "measures": view_data["measures"],
+                "calculated_fields": view_data["calculated_fields"],
                 "has_dimensions": len(view_data["dimensions"]) > 0,
                 "has_measures": len(view_data["measures"]) > 0,
+                "has_calculated_fields": len(view_data["calculated_fields"]) > 0,
             }
 
             # Render template

@@ -442,6 +442,15 @@
       <column caption='Adult_Calculation1' datatype='boolean' name='[Calculation_121878699071307776]' role='dimension' type='nominal'>
         <calculation class='tableau' formula='[adult]' />
       </column>
+      <column caption='calc_string_calc' datatype='string' name='[Calculation_121878699123515395]' role='dimension' type='nominal'>
+        <calculation class='tableau' formula='[original_language] + [original_language]' />
+      </column>
+      <column caption='arithmetic' datatype='real' name='[Calculation_121878699124449285]' role='measure' type='quantitative'>
+        <calculation class='tableau' formula='[popularity] + [runtime]' />
+      </column>
+      <column caption='title_func_calc' datatype='string' name='[Calculation_121878699124617222]' role='dimension' type='nominal'>
+        <calculation class='tableau' formula='UPPER([title])' />
+      </column>
       <column caption='credits' datatype='table' name='[__tableau_internal_object_id__].[credits_8ABD4270F00F4E04BC25EA6C22F980B3]' role='measure' type='quantitative' />
       <column caption='movies_data' datatype='table' name='[__tableau_internal_object_id__].[movies_data_ABE0DA269CA54D889539EA502B27F4A7]' role='measure' type='quantitative' />
       <column caption='Adult (Movies Data2)' datatype='boolean' name='[adult (movies_data2)]' role='dimension' type='nominal' />

@@ -62,6 +62,46 @@ view: {{ view_name }} {
   {% endfor %}
   {% endif %}
 
+  # Calculated Fields (from Tableau formulas)
+  {% if has_calculated_fields %}
+  {% for calc_field in calculated_fields %}
+
+  {% if calc_field.role == 'dimension' or calc_field.field_type == 'dimension' %}
+  dimension: {{ calc_field.name }} {
+    description: "{{ calc_field.description }}"
+    {% if calc_field.datatype == 'string' %}
+    type: string
+    {% elif calc_field.datatype == 'integer' %}
+    type: number
+    {% elif calc_field.datatype == 'real' %}
+    type: number
+    {% elif calc_field.datatype == 'boolean' %}
+    type: yesno
+    {% else %}
+    type: string
+    {% endif %}
+    sql: {{ calc_field.sql }} ;;
+    {% if calc_field.original_formula %}
+    # Original Tableau formula: {{ calc_field.original_formula }}
+    {% endif %}
+  }
+  {% else %}
+  measure: {{ calc_field.name }} {
+    description: "{{ calc_field.description }}"
+    {% if calc_field.datatype == 'integer' or calc_field.datatype == 'real' %}
+    type: sum
+    {% else %}
+    type: sum
+    {% endif %}
+    sql: {{ calc_field.sql }} ;;
+    {% if calc_field.original_formula %}
+    # Original Tableau formula: {{ calc_field.original_formula }}
+    {% endif %}
+  }
+  {% endif %}
+  {% endfor %}
+  {% endif %}
+
   # Measures
   {% if has_measures %}
   {% for measure in measures %}
