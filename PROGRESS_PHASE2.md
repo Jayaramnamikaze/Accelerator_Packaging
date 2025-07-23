@@ -138,15 +138,156 @@ Requirements:
 - Error handling tests for malformed formulas
 ```
 
-## Priority Functions to Support (Phase 2.1)
+## Tableau Calculation Coverage Expansion Plan 🎯
 
-### High Priority Functions (Must Have)
-- **Conditional Logic**: IF, IIF, CASE, WHEN
-- **Mathematical**: +, -, *, /, %, ABS, ROUND, CEIL, FLOOR
-- **String Functions**: LEFT, RIGHT, MID, LEN, CONTAINS, UPPER, LOWER
-- **Date Functions**: DATEADD, DATEDIFF, YEAR, MONTH, DAY
-- **Aggregation**: SUM, COUNT, AVG, MIN, MAX (for measures)
-- **Logical**: AND, OR, NOT, ISNULL, IFNULL
+### Current Coverage Assessment: ~30-40%
+**Analysis Date:** Current system analysis shows limited support for Tableau's full calculation capabilities.
+
+### Target Coverage: 80-90%
+**Goal:** Comprehensive support for enterprise-level Tableau workbook migrations.
+
+---
+
+## Phase 2.3: Extended Calculation Capabilities (NEW) 🔥
+
+### Task 2.3.1: CASE Statement Implementation ⏳ PENDING
+**Status:** Critical Missing Feature
+**Current Issue:** formula_parser.py:472-483 returns "CASE statements not fully implemented yet"
+```
+Requirements:
+- Parse CASE [expression] WHEN [value1] THEN [result1] WHEN [value2] THEN [result2] ELSE [default] END
+- Support nested CASE statements
+- Handle mixed data types in WHEN clauses
+- AST node type: NodeType.CASE with when_clauses array
+
+Example Formulas to Support:
+- CASE [Category] WHEN 'Technology' THEN [Sales] * 1.1 WHEN 'Furniture' THEN [Sales] * 0.9 ELSE [Sales] END
+- CASE WHEN [Sales] > 1000 THEN 'High' WHEN [Sales] > 500 THEN 'Medium' ELSE 'Low' END
+```
+
+### Task 2.3.2: LOD Expressions Architecture ⏳ PENDING
+**Status:** Enterprise Critical - Zero Support Currently
+**Impact:** LOD expressions are core to advanced Tableau analytics
+```
+Requirements:
+- {FIXED [Dimension] : [Aggregation]} - Fixed LOD
+- {INCLUDE [Dimension] : [Aggregation]} - Include LOD
+- {EXCLUDE [Dimension] : [Aggregation]} - Exclude LOD
+- Context filter handling
+- Multi-level LOD nesting support
+
+Implementation Strategy:
+- New AST NodeType.LOD_EXPRESSION
+- LODHandler class with scope analysis
+- SQL generation with subqueries/window functions
+- Integration with existing aggregation system
+
+Example Formulas:
+- {FIXED [Region] : SUM([Sales])}
+- {INCLUDE [Category] : AVG([Profit])}
+- {EXCLUDE [Product] : COUNT([Orders])}
+```
+
+### Task 2.3.3: Table Calculations/Window Functions ⏳ PENDING
+**Status:** Business Intelligence Critical
+**Current Gap:** No window function support
+```
+Requirements:
+- RUNNING_SUM, RUNNING_AVG, RUNNING_COUNT
+- WINDOW_SUM, WINDOW_AVG, WINDOW_COUNT with range parameters
+- RANK, DENSE_RANK, ROW_NUMBER functions
+- PERCENTILE, MEDIAN statistical functions
+- LAG, LEAD offset functions
+
+Implementation:
+- WindowFunctionHandler class
+- AST NodeType.WINDOW_FUNCTION
+- SQL OVER clause generation
+- Partition and order by analysis
+
+Example Formulas:
+- RUNNING_SUM(SUM([Sales]))
+- WINDOW_SUM(SUM([Sales]), -2, 0)
+- RANK(SUM([Sales]), 'desc')
+- PERCENTILE([Sales], 0.75)
+```
+
+### Task 2.3.4: Extended Function Registry ⏳ PENDING
+**Status:** Foundation for 80%+ Coverage
+**Current:** 44 functions → **Target:** 150+ functions
+```
+Phase A - String Functions (Missing):
+- CONTAINS, STARTSWITH, ENDSWITH - String matching
+- TRIM, LTRIM, RTRIM - Whitespace handling
+- REPLACE, SUBSTITUTE - String manipulation
+- REGEX_MATCH, REGEX_REPLACE - Pattern matching
+- SPLIT, INDEX - String parsing
+
+Phase B - Date Functions (Limited → Comprehensive):
+Current: YEAR, MONTH, DAY
+Add: DATEADD, DATEDIFF, DATEPART, DATETRUNC
+Add: NOW, TODAY, ISDATE
+Add: QUARTER, WEEK, WEEKDAY functions
+
+Phase C - Advanced Aggregates:
+- MEDIAN, MODE - Statistical measures
+- STDEV, STDEVP, VAR, VARP - Variance functions
+- COUNTD, ATTR - Distinct operations
+- CORR, COVAR - Correlation functions
+
+Phase D - Type Conversion:
+- STR, INT, FLOAT, BOOL - Type casting
+- DATE, DATETIME - Date parsing
+- ISNULL, IFNULL, ZN - Null handling
+```
+
+### Task 2.3.5: Parameter Integration ⏳ PENDING
+**Status:** Dashboard Interactivity Critical
+```
+Requirements:
+- [Parameter Name] references in calculations
+- Parameter type validation (string, number, date)
+- Dynamic formula evaluation with parameter values
+- Integration with existing ParameterHandler
+
+Example Formulas:
+- IF [Sales] > [Sales Threshold Parameter] THEN 'Above' ELSE 'Below' END
+- TOP([Customers], [Top N Parameter])
+```
+
+### Task 2.3.6: Complex Nested Expression Handling ⏳ PENDING
+**Status:** Parser Robustness
+```
+Requirements:
+- Deep nesting support (10+ levels)
+- Complex function composition
+- Memory optimization for large ASTs
+- Parser error recovery
+
+Example Complex Formula:
+IF(ISNULL(UPPER(LEFT([Name], 3))), 'Unknown',
+   LOWER(RIGHT([Name], LEN([Name])-3)))
+```
+
+---
+
+## Priority Functions to Support (Updated)
+
+### Critical Priority (Phase 2.3) - Missing Enterprise Features
+- **CASE Statements**: Full CASE/WHEN/ELSE support
+- **LOD Expressions**: FIXED, INCLUDE, EXCLUDE scoping
+- **Window Functions**: RUNNING_*, WINDOW_*, RANK functions
+- **Advanced String**: CONTAINS, REGEX_MATCH, REPLACE, TRIM
+- **Advanced Date**: DATEADD, DATEDIFF, DATEPART, DATETRUNC
+- **Statistical**: MEDIAN, STDEV, PERCENTILE, CORR
+
+### High Priority Functions (Current Phase 2.1)
+- **Conditional Logic**: IF, IIF ✅, CASE ❌, WHEN ❌
+- **Mathematical**: +, -, *, /, %, ABS, ROUND, CEIL, FLOOR ✅
+- **String Functions**: LEFT, RIGHT, MID, LEN ✅, CONTAINS ❌, UPPER, LOWER ✅
+- **Date Functions**: YEAR, MONTH, DAY ✅, DATEADD ❌, DATEDIFF ❌
+- **Aggregation**: SUM, COUNT, AVG, MIN, MAX ✅ (for measures)
+- **Logical**: AND, OR, NOT ✅, ISNULL ✅, IFNULL ✅
 
 ### Medium Priority Functions (Should Have)
 - **Advanced Math**: POWER, SQRT, LOG, EXP
@@ -155,9 +296,9 @@ Requirements:
 - **Comparison**: BETWEEN, IN
 
 ### Low Priority Functions (Nice to Have)
-- **Statistical**: STDEV, VAR, MEDIAN, PERCENTILE
-- **Window Functions**: RUNNING_SUM, WINDOW_SUM, RANK
-- **LOD Expressions**: FIXED, INCLUDE, EXCLUDE (basic support)
+- **Advanced Math**: POWER, SQRT, LOG, EXP, SIN, COS, TAN
+- **Type Conversion**: STR, INT, FLOAT, BOOL, DATE, DATETIME
+- **Cross-Database**: RAWSQL_* functions (limited support)
 
 ## Sample Test Cases
 
@@ -217,15 +358,25 @@ AST: {
 }
 ```
 
-## Success Criteria for Phase 2.1
+## Success Criteria for Phase 2 (Updated)
 
-- ✅ Parse 80%+ of common calculated field formulas
-- ✅ Generate valid LookML for dimension and measure calculated fields
-- ✅ Handle nested expressions and complex logic
-- ✅ Proper field dependency tracking
-- ✅ Comprehensive test coverage (80%+)
-- ✅ Integration with existing Phase 1 components
-- ✅ Performance acceptable for workbooks with 50+ calculated fields
+### Phase 2.1 Success Criteria (Foundation)
+- ✅ Parse basic calculated field formulas (Current ~40% → Target 60%)
+- ✅ Generate valid AST for supported functions
+- ✅ Handle simple nested expressions
+- ✅ Basic field dependency tracking
+- ✅ Core test coverage (60%+)
+
+### Phase 2.3 Success Criteria (Enterprise Ready)
+- 🎯 Parse 80%+ of enterprise calculated field formulas
+- 🎯 Full CASE statement support with nested logic
+- 🎯 LOD expressions (FIXED, INCLUDE, EXCLUDE)
+- 🎯 Window functions (RUNNING_*, WINDOW_*, RANK)
+- 🎯 Advanced string/date/statistical functions (150+ functions)
+- 🎯 Complex nested expressions (10+ levels deep)
+- 🎯 Parameter integration in calculations
+- 🎯 Comprehensive test coverage (85%+)
+- 🎯 Performance acceptable for enterprise workbooks (200+ calculated fields)
 
 ## Current Status Summary
 
