@@ -120,6 +120,15 @@ class ASTToLookMLConverter:
             "LEFT": "LEFT",
             "RIGHT": "RIGHT",
             "MID": "SUBSTR",  # Tableau MID → SQL SUBSTR
+            # Advanced string functions
+            "CONTAINS": "POSITION({1} IN {0}) > 0",  # CONTAINS(string, substring) → POSITION(substring IN string) > 0
+            "STARTSWITH": "LEFT({0}, LENGTH({1})) = {1}",  # STARTSWITH(string, prefix) → LEFT(string, LENGTH(prefix)) = prefix
+            "ENDSWITH": "RIGHT({0}, LENGTH({1})) = {1}",  # ENDSWITH(string, suffix) → RIGHT(string, LENGTH(suffix)) = suffix
+            "REPLACE": "REPLACE",  # Direct mapping
+            "FIND": "POSITION({1} IN {0})",  # FIND(string, substring) → POSITION(substring IN string)
+            "SPLIT": "SPLIT_PART({0}, {1}, {2})",  # SPLIT(string, delimiter, index) → SPLIT_PART
+            "LTRIM": "LTRIM",  # Direct mapping
+            "RTRIM": "RTRIM",  # Direct mapping
             # Math functions - direct mapping
             "ABS": "ABS",
             "ROUND": "ROUND",
@@ -356,6 +365,13 @@ class ASTToLookMLConverter:
                         f"Special function {function_name} expects 1 argument, got {len(converted_args)}"
                     )
                     return f"/* {function_name}: wrong argument count */"
+            elif "{0}" in lookml_function or "{1}" in lookml_function:
+                # Complex string function patterns with numbered placeholders
+                try:
+                    return lookml_function.format(*converted_args)
+                except (IndexError, KeyError) as e:
+                    logger.warning(f"Function {function_name} template error: {str(e)}")
+                    return f"/* {function_name}: template error */"
             else:
                 # Standard function format: FUNCTION(arg1, arg2, ...)
                 args_str = ", ".join(converted_args)

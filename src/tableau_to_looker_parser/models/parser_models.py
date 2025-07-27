@@ -395,6 +395,71 @@ def create_default_function_registry() -> FunctionRegistry:
         SupportedFunction(
             name="MID", category="string", min_args=3, max_args=3, return_type="string"
         ),
+        # Advanced string functions - Priority 1
+        SupportedFunction(
+            name="CONTAINS",
+            category="string",
+            min_args=2,
+            max_args=2,
+            return_type="boolean",
+            description="Check if string contains substring",
+        ),
+        SupportedFunction(
+            name="STARTSWITH",
+            category="string",
+            min_args=2,
+            max_args=2,
+            return_type="boolean",
+            description="Check if string starts with prefix",
+        ),
+        SupportedFunction(
+            name="ENDSWITH",
+            category="string",
+            min_args=2,
+            max_args=2,
+            return_type="boolean",
+            description="Check if string ends with suffix",
+        ),
+        SupportedFunction(
+            name="REPLACE",
+            category="string",
+            min_args=3,
+            max_args=3,
+            return_type="string",
+            description="Replace occurrences of substring",
+        ),
+        SupportedFunction(
+            name="FIND",
+            category="string",
+            min_args=2,
+            max_args=3,
+            return_type="integer",
+            description="Find position of substring",
+        ),
+        SupportedFunction(
+            name="SPLIT",
+            category="string",
+            min_args=3,
+            max_args=3,
+            return_type="string",
+            description="Split string and return part by index",
+        ),
+        SupportedFunction(
+            name="LTRIM",
+            category="string",
+            min_args=1,
+            max_args=1,
+            return_type="string",
+            description="Remove leading whitespace",
+        ),
+        SupportedFunction(
+            name="RTRIM",
+            category="string",
+            min_args=1,
+            max_args=1,
+            return_type="string",
+            description="Remove trailing whitespace",
+        ),
     ]
 
     # Math functions
