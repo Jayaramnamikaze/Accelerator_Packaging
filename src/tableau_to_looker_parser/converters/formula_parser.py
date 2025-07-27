@@ -61,13 +61,20 @@ class FormulaLexer:
         (r"\(", TokenType.LEFT_PAREN),
         (r"\)", TokenType.RIGHT_PAREN),
         (r",", TokenType.COMMA),
+        (r"\{", TokenType.LEFT_BRACE),
+        (r"\}", TokenType.RIGHT_BRACE),
+        (r":", TokenType.COLON),
         # Keywords and identifiers (case insensitive)
         (r"(?i)\bIF\b", TokenType.IF),
         (r"(?i)\bTHEN\b", TokenType.THEN),
+        (r"(?i)\bELSEIF\b", TokenType.ELSEIF),
         (r"(?i)\bELSE\b", TokenType.ELSE),
         (r"(?i)\bEND\b", TokenType.END),
         (r"(?i)\bCASE\b", TokenType.CASE),
         (r"(?i)\bWHEN\b", TokenType.WHEN),
+        (r"(?i)\bFIXED\b", TokenType.FIXED),
+        (r"(?i)\bINCLUDE\b", TokenType.INCLUDE),
+        (r"(?i)\bEXCLUDE\b", TokenType.EXCLUDE),
         (r"(?i)\bAND\b", TokenType.AND),
         (r"(?i)\bOR\b", TokenType.OR),
         (r"(?i)\bNOT\b", TokenType.NOT),
@@ -221,10 +228,18 @@ class FormulaParser:
 
             if self.errors:
                 error_messages = [err.message for err in self.errors]
+                error_message = "; ".join(error_messages)
+
+                # Create fallback calculated field for parsing errors too
+                fallback_field = self._create_fallback_calculated_field(
+                    formula, field_name, field_type, error_message
+                )
+
                 return FormulaParseResult(
                     success=False,
                     original_formula=formula,
-                    error_message="; ".join(error_messages),
+                    error_message=error_message,
+                    calculated_field=fallback_field,  # Provide fallback for parsing errors
                 )
 
             # Analyze the AST
@@ -262,9 +277,18 @@ class FormulaParser:
             )
 
         except Exception as e:
-            logger.error(f"Parse error: {str(e)}")
+            logger.error(f"Critical parse error for formula '{formula}': {str(e)}")
+
+            # Create fallback calculated field for graceful degradation
+            fallback_field = self._create_fallback_calculated_field(
+                formula, field_name, field_type, str(e)
+            )
+
             return FormulaParseResult(
-                success=False, original_formula=formula, error_message=str(e)
+                success=False,
+                original_formula=formula,
+                error_message=str(e),
+                calculated_field=fallback_field,  # Provide fallback even on failure
             )
 
     def parse_expression(self) -> ASTNode:
@@ -386,6 +410,10 @@ class FormulaParser:
         if self.match(TokenType.CASE):
             return self.parse_case_statement()
 
+        # LOD expression
+        if self.match(TokenType.LEFT_BRACE):
+            return self.parse_lod_expression()
+
         # Parenthesized expression
         if self.match(TokenType.LEFT_PAREN):
             expr = self.parse_expression()
@@ -451,14 +479,47 @@ class FormulaParser:
         return ASTNode(node_type=NodeType.LITERAL, value=None, data_type=DataType.NULL)
 
     def parse_if_statement(self) -> ASTNode:
-        """Parse IF-THEN-ELSE statement."""
+        """Parse IF-THEN-ELSEIF-ELSE statement with multiple ELSEIF support."""
         condition = self.parse_expression()
         self.consume(TokenType.THEN, "Expected 'THEN' after IF condition")
         then_branch = self.parse_expression()
 
         else_branch = None
+
+        # Handle multiple ELSEIF clauses by creating nested conditionals
+        while self.match(TokenType.ELSEIF):
+            elseif_condition = self.parse_expression()
+            self.consume(TokenType.THEN, "Expected 'THEN' after ELSEIF condition")
+            elseif_then = self.parse_expression()
+
+            # Create nested conditional for ELSEIF
+            nested_conditional = ASTNode(
+                node_type=NodeType.CONDITIONAL,
+                condition=elseif_condition,
+                then_branch=elseif_then,
+                else_branch=None,  # Will be set by next ELSEIF or ELSE
+            )
+
+            if else_branch is None:
+                else_branch = nested_conditional
+            else:
+                # Find the deepest else_branch and attach there
+                current = else_branch
+                while current.else_branch is not None:
+                    current = current.else_branch
+                current.else_branch = nested_conditional
+
+        # Handle final ELSE clause
         if self.match(TokenType.ELSE):
-            else_branch = self.parse_expression()
+            final_else = self.parse_expression()
+            if else_branch is None:
+                else_branch = final_else
+            else:
+                # Find the deepest else_branch and attach there
+                current = else_branch
+                while current.else_branch is not None:
+                    current = current.else_branch
+                current.else_branch = final_else
 
         self.consume(TokenType.END, "Expected 'END' to close IF statement")
 
@@ -470,17 +531,91 @@ class FormulaParser:
         )
 
     def parse_case_statement(self) -> ASTNode:
-        """Parse CASE statement (simplified version)."""
-        # For now, just parse as a complex expression
-        # Full CASE implementation would need when_clauses
-        self.errors.append(
-            ParserError(
-                message="CASE statements not fully implemented yet",
-                position=self.previous().position,
-                severity="error",
+        """Parse CASE statement with full WHEN clause support."""
+        from ..models.ast_schema import WhenClause
+
+        case_expression = None
+        when_clauses = []
+        else_branch = None
+
+        # Check if this is CASE [expression] WHEN... or CASE WHEN...
+        if not self.check(TokenType.WHEN):
+            # CASE [expression] WHEN... format
+            case_expression = self.parse_expression()
+
+        # Parse WHEN clauses
+        while self.match(TokenType.WHEN):
+            when_condition = self.parse_expression()
+            self.consume(TokenType.THEN, "Expected 'THEN' after WHEN condition")
+            when_result = self.parse_expression()
+
+            when_clauses.append(
+                WhenClause(condition=when_condition, result=when_result)
             )
+
+        # Parse optional ELSE clause
+        if self.match(TokenType.ELSE):
+            else_branch = self.parse_expression()
+
+        self.consume(TokenType.END, "Expected 'END' to close CASE statement")
+
+        return ASTNode(
+            node_type=NodeType.CASE,
+            case_expression=case_expression,
+            when_clauses=when_clauses,
+            else_branch=else_branch,
         )
-        return ASTNode(node_type=NodeType.LITERAL, value=None, data_type=DataType.NULL)
+
+    def parse_lod_expression(self) -> ASTNode:
+        """Parse LOD expression: {FIXED/INCLUDE/EXCLUDE [dims] : AGG([field])}"""
+        # Consume LOD type (FIXED, INCLUDE, EXCLUDE)
+        lod_type = None
+        if self.match(TokenType.FIXED, TokenType.INCLUDE, TokenType.EXCLUDE):
+            lod_type = self.previous().value.upper()
+        else:
+            self.errors.append(
+                ParserError(
+                    message="Expected FIXED, INCLUDE, or EXCLUDE after '{'",
+                    position=self.peek().position,
+                    severity="error",
+                )
+            )
+            return ASTNode(
+                node_type=NodeType.LITERAL, value=None, data_type=DataType.NULL
+            )
+
+        # Parse dimensions: [Region], [Category] (optional for some LOD types)
+        dimensions = []
+        while self.check(TokenType.FIELD_REF):
+            dim = self.parse_field_reference()
+            dimensions.append(dim)
+            if not self.match(TokenType.COMMA):
+                break
+
+        # Consume colon (:)
+        self.consume(TokenType.COLON, "Expected ':' after LOD dimensions")
+
+        # Parse the aggregation expression
+        lod_expression = self.parse_expression()
+
+        # Consume closing brace
+        self.consume(TokenType.RIGHT_BRACE, "Expected '}' to close LOD expression")
+
+        return ASTNode(
+            node_type=NodeType.LOD_EXPRESSION,
+            lod_type=lod_type,
+            lod_dimensions=dimensions,
+            lod_expression=lod_expression,
+        )
+
+    def parse_field_reference(self) -> ASTNode:
+        """Parse a field reference like [Field Name]."""
+        field_name = self.advance().value  # Get the field name
+        return ASTNode(
+            node_type=NodeType.FIELD_REF,
+            field_name=field_name.lower().replace(" ", "_"),
+            original_name=f"[{field_name}]",
+        )
 
     def parse_function_call(self) -> ASTNode:
         """Parse function call."""
@@ -675,6 +810,47 @@ class FormulaParser:
                 return True
 
         return False
+
+    def _create_fallback_calculated_field(
+        self, formula: str, field_name: str, field_type: str, error_message: str
+    ) -> CalculatedField:
+        """
+        Create a fallback calculated field when parsing fails.
+
+        This ensures LookML generation can continue even with unparseable formulas.
+        The fallback includes the original formula as metadata for manual migration.
+        """
+        # Create a simple fallback AST node that represents the unparseable formula
+        fallback_ast = ASTNode(
+            node_type=NodeType.LITERAL,
+            value="MIGRATION_REQUIRED",
+            data_type=DataType.STRING,
+            properties={
+                "original_formula": formula,
+                "parse_error": error_message,
+                "migration_status": "MANUAL_REQUIRED",
+                "migration_comment": f"Original Tableau formula: {formula}",
+            },
+        )
+
+        # Create calculated field with error metadata
+        calculated_field = CalculatedField(
+            name=field_name or "unparseable_field",
+            original_formula=formula,
+            field_type=field_type,
+            ast_root=fallback_ast,
+            data_type=DataType.STRING,  # Safe default
+            complexity="error",
+            dependencies=[],  # Can't extract dependencies from failed parse
+            requires_aggregation=False,  # Safe default
+            is_deterministic=True,  # Safe default
+            parse_confidence=0.0,  # Zero confidence for failed parse
+            validation_errors=[f"Parse failure: {error_message}"],
+            warnings=[f"Fallback generated for formula: {formula}"],
+        )
+
+        logger.warning(f"Created fallback calculated field for: {formula}")
+        return calculated_field
 
     def _is_deterministic(self, node: ASTNode) -> bool:
         """Check if expression is deterministic."""

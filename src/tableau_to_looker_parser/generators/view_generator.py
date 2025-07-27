@@ -215,6 +215,13 @@ class ViewGenerator(BaseGenerator):
             # Convert AST to LookML SQL expression
             lookml_sql = self.ast_converter.convert_to_lookml(ast_node, "TABLE")
 
+            # Check if this is a fallback AST node that needs special handling
+            is_fallback = (
+                ast_node.node_type.value == "literal"
+                and ast_node.properties
+                and ast_node.properties.get("migration_status") == "MANUAL_REQUIRED"
+            )
+
             # Check if this is a measure that needs two-step pattern
             role = calc_field.get("role", "dimension")
             if role == "measure" and self._needs_two_step_pattern(
@@ -241,6 +248,18 @@ class ViewGenerator(BaseGenerator):
                 "lookml_type": lookml_type,  # Add LookML type for template
             }
 
+            # Add migration metadata for fallback fields
+            if is_fallback:
+                converted_field.update(
+                    {
+                        "migration_error": True,
+                        "migration_comment": f"""MIGRATION_ERROR: Could not parse Tableau formula
+ORIGINAL_FORMULA: {calculation.get("original_formula", "UNKNOWN")}
+PARSE_ERROR: {ast_node.properties.get("parse_error", "Unknown error")}
+TODO: Manual migration required - please convert this formula manually""",
+                    }
+                )
+
             logger.debug(
                 f"Converted calculated field: {calc_field.get('name')} → {lookml_sql}"
             )
@@ -250,7 +269,42 @@ class ViewGenerator(BaseGenerator):
             logger.error(
                 f"Failed to convert calculated field {calc_field.get('name')}: {str(e)}"
             )
-            return None
+
+            # Create fallback field instead of failing completely
+            return self._create_fallback_lookml_field(calc_field, str(e))
+
+    def _create_fallback_lookml_field(
+        self, calc_field: Dict, error_message: str
+    ) -> Dict:
+        """
+        Create a fallback LookML field when conversion fails.
+
+        This ensures LookML generation continues even with problematic calculated fields.
+        The fallback includes migration comments with the original formula.
+        """
+        calculation = calc_field.get("calculation", {})
+        original_formula = calculation.get("original_formula", "UNKNOWN_FORMULA")
+        field_name = calc_field.get("name", "unknown_field")
+
+        # Create safe fallback field
+        fallback_field = {
+            "name": self._clean_name(field_name),
+            "original_name": calc_field.get("original_name", ""),
+            "field_type": calc_field.get("field_type", "dimension"),
+            "role": calc_field.get("role", "dimension"),
+            "sql": "'MIGRATION_REQUIRED'",  # Safe SQL placeholder
+            "original_formula": original_formula,
+            "description": "MIGRATION ERROR - Manual conversion required",
+            "lookml_type": "string",  # Safe default type
+            "migration_error": True,  # Flag for template to add comments
+            "migration_comment": f"""MIGRATION_ERROR: Could not convert calculated field
+ORIGINAL_FORMULA: {original_formula}
+CONVERSION_ERROR: {error_message}
+TODO: Manual migration required - please convert this formula manually""",
+        }
+
+        logger.warning(f"Created fallback LookML field for: {field_name}")
+        return fallback_field
 
     def _determine_lookml_type(self, calc_field: Dict, calculation: Dict) -> str:
         """

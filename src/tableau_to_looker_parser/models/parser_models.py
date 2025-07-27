@@ -51,10 +51,21 @@ class TokenType(Enum):
     # Keywords
     IF = "IF"
     THEN = "THEN"
+    ELSEIF = "ELSEIF"
     ELSE = "ELSE"
     END = "END"
     CASE = "CASE"
     WHEN = "WHEN"
+
+    # LOD Keywords
+    FIXED = "FIXED"
+    INCLUDE = "INCLUDE"
+    EXCLUDE = "EXCLUDE"
+
+    # LOD Punctuation
+    LEFT_BRACE = "LEFT_BRACE"  # {
+    RIGHT_BRACE = "RIGHT_BRACE"  # }
+    COLON = "COLON"  # :
 
     # Special
     EOF = "EOF"

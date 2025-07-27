@@ -30,6 +30,8 @@ class NodeType(str, Enum):
     # Complex constructs
     LIST = "list"  # For IN clauses, function args
     RANGE = "range"  # For BETWEEN clauses
+    LOD_EXPRESSION = "lod_expression"  # {FIXED/INCLUDE/EXCLUDE [dims] : AGG([field])}
+    WINDOW_FUNCTION = "window_function"  # RUNNING_SUM(), RANK(), WINDOW_SUM(), etc.
 
     # Unary operations
     UNARY = "unary"  # NOT, -, +
@@ -93,6 +95,19 @@ class ASTNode(BaseModel):
     # Range fields (for BETWEEN)
     min_value: Optional["ASTNode"] = None
     max_value: Optional["ASTNode"] = None
+
+    # LOD expression fields
+    lod_type: Optional[str] = None  # "FIXED", "INCLUDE", "EXCLUDE"
+    lod_dimensions: List["ASTNode"] = Field(
+        default_factory=list
+    )  # [Region], [Category]
+    lod_expression: Optional["ASTNode"] = None  # SUM([Sales]), AVG([Profit])
+
+    # Window function fields
+    window_function_type: Optional[str] = None  # "RUNNING_SUM", "RANK", "WINDOW_SUM"
+    partition_by: List["ASTNode"] = Field(default_factory=list)  # PARTITION BY fields
+    order_by: List["ASTNode"] = Field(default_factory=list)  # ORDER BY fields
+    window_frame: Optional[str] = None  # "ROWS UNBOUNDED PRECEDING", etc.
 
     # Metadata and extensions
     confidence: float = 1.0

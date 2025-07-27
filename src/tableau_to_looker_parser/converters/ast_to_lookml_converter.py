@@ -79,9 +79,19 @@ class ASTToLookMLConverter:
             return self._convert_conditional(node, table_context)
         elif node.node_type == NodeType.CASE:
             return self._convert_case(node, table_context)
+        elif node.node_type == NodeType.LOD_EXPRESSION:
+            return self._convert_lod_expression(node, table_context)
         elif node.node_type == NodeType.UNARY:
             return self._convert_unary(node, table_context)
         else:
+            # Check if this is a fallback node with migration metadata
+            if (
+                node.node_type == NodeType.LITERAL
+                and node.properties
+                and node.properties.get("migration_status") == "MANUAL_REQUIRED"
+            ):
+                return self._convert_fallback_node(node, table_context)
+
             logger.warning(f"Unsupported node type: {node.node_type}")
             return f"/* Unsupported: {node.node_type} */"
 
@@ -453,3 +463,103 @@ class ASTToLookMLConverter:
 
         logger.debug(f"Converted CASE statement to: {case_expr}")
         return case_expr
+
+    def _convert_lod_expression(self, node: ASTNode, table_context: str) -> str:
+        """
+        Convert LOD expressions to LookML SQL subqueries.
+
+        LOD expressions change the aggregation context:
+        - FIXED: Aggregates at specified dimensions only
+        - INCLUDE: Adds dimensions to current context
+        - EXCLUDE: Removes dimensions from current context
+
+        Args:
+            node: LOD AST node with lod_type, lod_dimensions, lod_expression
+            table_context: Table context for field references
+
+        Returns:
+            LookML SQL subquery expression
+
+        Examples:
+            {FIXED [Region] : SUM([Sales])}
+            ↓
+            (SELECT SUM(sales) FROM ${TABLE} GROUP BY region)
+
+            {INCLUDE [Category] : AVG([Profit])}
+            ↓
+            (SELECT AVG(profit) FROM ${TABLE} GROUP BY /* current context + */ category)
+        """
+        if not node.lod_type or not node.lod_expression:
+            logger.warning("LOD expression missing type or expression")
+            return "/* Invalid LOD expression */"
+
+        # Convert the aggregation expression
+        lod_expr = self._convert_node(node.lod_expression, table_context)
+
+        # Convert dimension fields
+        dimension_fields = []
+        for dim in node.lod_dimensions:
+            dim_field = self._convert_node(dim, table_context)
+            # Remove ${TABLE}. prefix for GROUP BY
+            clean_field = dim_field.replace(f"${{{table_context}}}.", "")
+            dimension_fields.append(clean_field)
+
+        # Build SQL based on LOD type
+        if node.lod_type == "FIXED":
+            # FIXED: Aggregate only at specified dimensions
+            if dimension_fields:
+                group_by = f" GROUP BY {', '.join(dimension_fields)}"
+            else:
+                group_by = ""  # No dimensions = grand total
+
+            sql_expr = f"(SELECT {lod_expr} FROM ${{{table_context}}}{group_by})"
+
+        elif node.lod_type == "INCLUDE":
+            # INCLUDE: Add dimensions to current context
+            # This is complex - for now, treat like FIXED
+            if dimension_fields:
+                group_by = f" GROUP BY {', '.join(dimension_fields)}"
+            else:
+                group_by = ""
+
+            sql_expr = f"(SELECT {lod_expr} FROM ${{{table_context}}}{group_by})"
+
+        elif node.lod_type == "EXCLUDE":
+            # EXCLUDE: Remove dimensions from current context
+            # This is complex - for now, create a simple subquery
+            sql_expr = f"(SELECT {lod_expr} FROM ${{{table_context}}})"
+
+        else:
+            logger.warning(f"Unsupported LOD type: {node.lod_type}")
+            sql_expr = f"/* Unsupported LOD type: {node.lod_type} */"
+
+        logger.debug(f"Converted LOD expression to: {sql_expr}")
+        return sql_expr
+
+    def _convert_fallback_node(self, node: ASTNode, table_context: str) -> str:
+        """
+        Convert fallback node to LookML with migration comments.
+
+        This handles cases where the original Tableau formula couldn't be parsed.
+        It generates safe LookML with the original formula in comments.
+
+        Args:
+            node: Fallback AST node with migration metadata
+            table_context: Table context (not used for fallback)
+
+        Returns:
+            Safe LookML expression with migration comments
+        """
+        original_formula = node.properties.get("original_formula", "UNKNOWN")
+        parse_error = node.properties.get("parse_error", "Unknown error")
+
+        # Create safe LookML with embedded migration information
+        fallback_sql = "'MIGRATION_REQUIRED'"
+
+        # Log detailed migration information (comment will be handled by view generator)
+        logger.warning(
+            f"Generated fallback LookML for unparseable formula: {original_formula}"
+        )
+        logger.warning(f"Parse error: {parse_error}")
+
+        return fallback_sql
