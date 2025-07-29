@@ -436,7 +436,7 @@ class ModelGenerator(BaseGenerator):
     def _build_physical_joins(
         self, migration_data: Dict, primary_table: Dict
     ) -> List[Dict]:
-        """Build joins from physical relationships (identical to original)."""
+        """Build joins from physical relationships."""
         joins = []
         existing_joins = set()
 
@@ -452,6 +452,14 @@ class ModelGenerator(BaseGenerator):
             # Check if this is a self-join (multiple aliases for same table)
             if self._is_self_join_relationship(table_aliases, migration_data):
                 join = self._build_self_join(
+                    relationship, primary_table, existing_joins
+                )
+                if join:
+                    joins.append(join)
+                    existing_joins.add(join["view_name"])
+            else:
+                # Handle regular table-to-table physical joins
+                join = self._build_regular_physical_join(
                     relationship, primary_table, existing_joins
                 )
                 if join:
@@ -518,6 +526,63 @@ class ModelGenerator(BaseGenerator):
                     "type": relationship.get("join_type", "inner"),
                     "sql_on": f"${{{primary_table['name']}.{primary_field}}} = ${{{join_table_alias}.{join_field}}}",
                     "relationship": "one_to_one",
+                }
+
+        return None
+
+    def _build_regular_physical_join(
+        self, relationship: Dict, primary_table: Dict, existing_joins: Set
+    ) -> Dict:
+        """Build a regular table-to-table physical join (not self-join)."""
+        table_aliases = relationship.get("table_aliases", {})
+        expressions = relationship.get("expression", {}).get("expressions", [])
+
+        if len(expressions) < 2:
+            return None
+
+        # Parse expressions to get join fields
+        left_expr = expressions[0].replace("[", "").replace("]", "")
+        right_expr = expressions[1].replace("[", "").replace("]", "")
+
+        # Extract table.field format
+        left_parts = left_expr.split(".")
+        right_parts = right_expr.split(".")
+
+        if len(left_parts) >= 2 and len(right_parts) >= 2:
+            left_table = left_parts[0]
+            left_field = left_parts[1]
+            right_table = right_parts[0]
+            right_field = right_parts[1]
+
+            # Determine which table to join (not the primary table)
+            join_table = None
+            join_field = None
+            primary_field = None
+
+            if left_table == primary_table["name"]:
+                # Primary table is on the left, join the right table
+                join_table = right_table
+                join_field = right_field
+                primary_field = left_field
+            elif right_table == primary_table["name"]:
+                # Primary table is on the right, join the left table
+                join_table = left_table
+                join_field = left_field
+                primary_field = right_field
+
+            if (
+                join_table
+                and join_table in table_aliases
+                and join_table not in existing_joins
+            ):
+                logger.info(
+                    f"Creating physical join: {primary_table['name']} -> {join_table} on {primary_field} = {join_field}"
+                )
+                return {
+                    "view_name": join_table,
+                    "type": relationship.get("join_type", "inner"),
+                    "sql_on": f"${{{primary_table['name']}.{primary_field}}} = ${{{join_table}.{join_field}}}",
+                    "relationship": "many_to_one",
                 }
 
         return None
