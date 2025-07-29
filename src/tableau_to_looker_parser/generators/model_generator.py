@@ -23,6 +23,9 @@ class ModelGenerator(BaseGenerator):
         Maintains backward compatibility with original ModelGenerator.
         """
         try:
+            # Build field name mapping for v2 parser compatibility
+            self.field_name_mapping = self._build_field_name_mapping(migration_data)
+
             # Build explores with joins using enhanced logic
             explores = self._build_explores(migration_data)
 
@@ -335,8 +338,77 @@ class ModelGenerator(BaseGenerator):
             "relationship": join_info["relationship_type"],
         }
 
+    def _build_field_name_mapping(self, migration_data: Dict) -> Dict[str, str]:
+        """Build mapping from original field expressions to clean field names from v2 parser.
+
+        Args:
+            migration_data: Migration data containing dimensions and measures
+
+        Returns:
+            Dict mapping original expressions like '[id (credits)]' to clean names like 'id'
+        """
+        field_mapping = {}
+
+        # Build mapping from relationship expressions to clean field names
+        # Handle cases like 'id (credits)' -> 'id' and 'id' -> 'id'
+
+        # Get all field names
+        all_field_names = set()
+
+        # Collect dimension names
+        for dim in migration_data.get("dimensions", []):
+            field_name = dim.get("name")
+            if field_name:
+                all_field_names.add(field_name)
+                field_mapping[field_name] = field_name  # Direct mapping: 'id' -> 'id'
+
+        # Collect measure names
+        for measure in migration_data.get("measures", []):
+            field_name = measure.get("name")
+            if field_name:
+                all_field_names.add(field_name)
+                field_mapping[field_name] = field_name  # Direct mapping: 'id' -> 'id'
+
+        # Add mappings for expressions with table suffixes like 'id (credits)' -> 'id'
+        for field_name in all_field_names:
+            # Create pattern: 'field_name (table_name)' -> 'field_name'
+            # This handles expressions like 'id (credits)' -> 'id'
+
+            # Find all relationship expressions that match this field
+            for rel in migration_data.get("relationships", []):
+                expressions = rel.get("expression", {}).get("expressions", [])
+                for expr in expressions:
+                    # Remove brackets first
+                    clean_expr = expr.replace("[", "").replace("]", "")
+
+                    # Check if this expression starts with our field name
+                    if (
+                        clean_expr.startswith(field_name + " (")
+                        or clean_expr == field_name
+                    ):
+                        field_mapping[clean_expr] = field_name
+
+        logger.debug(f"Built field name mapping with {len(field_mapping)} entries")
+        return field_mapping
+
     def _extract_field_name(self, expression: str) -> str:
-        """Extract field name from expression (identical logic to original for compatibility)."""
+        """Extract field name from expression using v2 parser field mapping.
+
+        This method now uses the clean field names from v2 parser instead of
+        the old cleaning logic to ensure consistency with generated views.
+        """
+        # First try to use the field mapping from v2 parser
+        if (
+            hasattr(self, "field_name_mapping")
+            and expression in self.field_name_mapping
+        ):
+            clean_name = self.field_name_mapping[expression]
+            logger.debug(
+                f"Mapped '{expression}' -> '{clean_name}' using v2 parser field mapping"
+            )
+            return clean_name
+
+        # Fallback to original logic for backward compatibility
         import re
 
         # Remove brackets (same as original)
@@ -354,6 +426,9 @@ class ModelGenerator(BaseGenerator):
         # Remove leading/trailing underscores (same as original)
         name = name.strip("_")
 
+        logger.debug(
+            f"Fallback mapping '{expression}' -> '{name}' using original logic"
+        )
         return name
 
     # The following methods are identical to original for backward compatibility

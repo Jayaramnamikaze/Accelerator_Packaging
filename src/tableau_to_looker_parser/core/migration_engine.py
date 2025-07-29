@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from tableau_to_looker_parser.core.xml_parser import TableauXMLParser
+from tableau_to_looker_parser.core.xml_parser_v2 import TableauXMLParserV2
 from tableau_to_looker_parser.core.plugin_registry import PluginRegistry
 from tableau_to_looker_parser.handlers.base_handler import BaseHandler
 from tableau_to_looker_parser.handlers.relationship_handler import RelationshipHandler
@@ -26,9 +27,15 @@ class MigrationEngine:
     4. LookML generation (future)
     """
 
-    def __init__(self):
+    def __init__(self, use_v2_parser: bool = True):
+        """Initialize migration engine.
+
+        Args:
+            use_v2_parser: If True, uses enhanced metadata-first parser (default: True)
+        """
         self.logger = logging.getLogger(__name__)
         self.plugin_registry = PluginRegistry()
+        self.use_v2_parser = use_v2_parser
 
         # Register default handlers
         self.register_handler(RelationshipHandler(), priority=1)
@@ -76,8 +83,16 @@ class MigrationEngine:
         output_path.mkdir(parents=True, exist_ok=True)
 
         try:
-            # Parse workbook
-            parser = TableauXMLParser()
+            # Parse workbook - use v2 parser by default for enhanced field coverage
+            if self.use_v2_parser:
+                parser = TableauXMLParserV2()
+                self.logger.info(
+                    "Using enhanced XML Parser v2 (metadata-first approach)"
+                )
+            else:
+                parser = TableauXMLParser()
+                self.logger.info("Using legacy XML Parser v1")
+
             if tableau_path.suffix.lower() == ".twb":
                 root = parser._parse_twb_file(tableau_path)
             else:
@@ -101,11 +116,15 @@ class MigrationEngine:
             # Process with handlers using clean architecture
             self.logger.info("Starting workbook processing")
 
-            # Get all elements from parser
-            elements = parser.get_all_elements(root)
+            # Get all elements from parser - v2 provides enhanced field coverage
+            if self.use_v2_parser:
+                elements = parser.get_all_elements_enhanced(root)
+            else:
+                elements = parser.get_all_elements(root)
             self.logger.info(f"Found {len(elements)} elements to process")
 
             # Build field-to-table mapping for calculated field inference
+            # V2 parser provides more accurate mappings from metadata-records
             field_table_mapping = self._build_field_table_mapping(elements)
 
             # Process each element through handlers

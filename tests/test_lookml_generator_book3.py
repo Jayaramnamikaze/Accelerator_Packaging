@@ -43,12 +43,27 @@ def test_lookml_generator_book3():
             assert "explore:" in model_content
             assert "join:" in model_content  # Book3 has relationships
 
+        # Validate that each view has proper structure
+        dimensions_found = False
+        measures_found = False
+
         for view_file in generated_files["views"]:
             with open(view_file, "r") as f:
                 content = f.read()
                 assert "view:" in content
-                assert "dimension:" in content
-                assert "measure:" in content
+
+                # Check for dimensions and measures across all views
+                if "dimension:" in content:
+                    dimensions_found = True
+                if "measure:" in content:
+                    measures_found = True
+
+        # At least one view should have measures (v2 parser may classify more fields as measures)
+        assert measures_found, "No measures found in any view"
+
+        # For Book3, we expect dimensions in at least one view (movies_data has date dimensions)
+        # Note: v2 parser classifies fields more accurately based on metadata aggregation
+        assert dimensions_found, "No dimensions found in any view"
 
         # Copy files for inspection
         # shutil.copy2(generated_files["connection"], output_dir / "connection.lkml")
