@@ -399,6 +399,16 @@ class TableauXMLParserV2:
 
             enhanced_fields[field_name] = enhanced_field
 
+        # Override field classification with XML role if available (AUTHORITATIVE)
+        # This uses Tableau's actual classification from column elements
+        for field_name, enhanced_field in enhanced_fields.items():
+            if field_name in column_enhancements:
+                xml_role = column_enhancements[field_name].get("role")
+                if xml_role in ["dimension", "measure"]:
+                    # Use Tableau's explicit classification
+                    enhanced_field["field_type"] = xml_role
+                    enhanced_field["role"] = xml_role
+
         # Add calculated fields that exist only in column elements (NO METADATA)
         for field_name, enhancement in column_enhancements.items():
             if field_name not in enhanced_fields and enhancement.get("is_calculated"):
