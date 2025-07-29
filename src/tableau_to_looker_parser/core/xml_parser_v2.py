@@ -205,19 +205,24 @@ class TableauXMLParserV2:
 
             field_name = local_name_elem.text.strip("[]")
 
-            # Determine field type from aggregation (KEY IMPROVEMENT)
+            # Determine field type from data type (BEST APPROACH)
+            # This matches how Tableau actually classifies fields
+            data_type = (
+                local_type_elem.text if local_type_elem is not None else "string"
+            )
             aggregation = (
                 aggregation_elem.text if aggregation_elem is not None else "Count"
             )
-            is_measure = aggregation in [
-                "Sum",
-                "Avg",
-                "Count",
-                "Min",
-                "Max",
-                "Median",
-                "StdDev",
-                "Var",
+
+            # Use data type for field classification (more reliable than aggregation):
+            # - Numeric types (real, integer) → Measures (can be summed, averaged)
+            # - Non-numeric types (string, date, boolean) → Dimensions (categorical/grouping)
+            is_measure = data_type.lower() in [
+                "real",
+                "integer",
+                "number",
+                "float",
+                "double",
             ]
 
             # Create enhanced field definition
@@ -237,9 +242,7 @@ class TableauXMLParserV2:
                 # Type classification (KEY IMPROVEMENT)
                 "field_type": "measure" if is_measure else "dimension",
                 "role": "measure" if is_measure else "dimension",
-                "datatype": local_type_elem.text
-                if local_type_elem is not None
-                else "string",
+                "datatype": data_type,
                 "aggregation": aggregation,
                 # Additional metadata
                 "contains_null": contains_null_elem.text == "true"
