@@ -15,6 +15,8 @@ from tableau_to_looker_parser.handlers.parameter_handler import ParameterHandler
 from tableau_to_looker_parser.handlers.calculated_field_handler import (
     CalculatedFieldHandler,
 )
+from tableau_to_looker_parser.handlers.worksheet_handler import WorksheetHandler
+from tableau_to_looker_parser.handlers.dashboard_handler import DashboardHandler
 
 
 class MigrationEngine:
@@ -37,7 +39,7 @@ class MigrationEngine:
         self.plugin_registry = PluginRegistry()
         self.use_v2_parser = use_v2_parser
 
-        # Register default handlers
+        # Register default handlers (Phase 1-2)
         self.register_handler(RelationshipHandler(), priority=1)
         self.register_handler(ConnectionHandler(), priority=2)
         self.register_handler(DimensionHandler(), priority=3)
@@ -46,6 +48,10 @@ class MigrationEngine:
         self.register_handler(
             CalculatedFieldHandler(), priority=6
         )  # After regular fields
+
+        # Register Phase 3 handlers (worksheets and dashboards)
+        self.register_handler(WorksheetHandler(), priority=7)
+        self.register_handler(DashboardHandler(), priority=8)
 
     def register_handler(self, handler: BaseHandler, priority: int = 100) -> None:
         """Register a handler with the engine.
@@ -111,6 +117,9 @@ class MigrationEngine:
                 "measures": [],
                 "parameters": [],
                 "calculated_fields": [],
+                # Phase 3: Worksheet and Dashboard data
+                "worksheets": [],
+                "dashboards": [],
             }
 
             # Process with handlers using clean architecture
@@ -178,6 +187,11 @@ class MigrationEngine:
                     self.logger.warning(
                         f"No handler found for {element['type']}: {element_name}"
                     )
+
+            # Phase 3: Process worksheets and dashboards (only with v2 parser)
+            if self.use_v2_parser:
+                self.logger.info("Processing Phase 3: Worksheets and Dashboards")
+                self._process_worksheets_and_dashboards(parser, root, result)
 
             # Save JSON output
             json_path = output_path / "processed_pipeline_output.json"
@@ -295,6 +309,101 @@ class MigrationEngine:
             self.logger.warning(
                 f"Failed to process datasource-dependencies mappings: {e}"
             )
+
+    def _process_worksheets_and_dashboards(self, parser, root, result: Dict) -> None:
+        """
+        Process worksheets and dashboards using Phase 3 handlers.
+
+        This is the integration layer that:
+        1. Extracts raw worksheet and dashboard data using XMLParser
+        2. Processes them through dedicated handlers
+        3. Links worksheets to dashboard elements
+        4. Adds complete integrated data to result
+        """
+        try:
+            # Step 1: Extract raw data using XMLParser
+            self.logger.info("Extracting raw worksheets and dashboards")
+            raw_worksheets = parser.extract_worksheets(root)
+            raw_dashboards = parser.extract_dashboards(root)
+
+            self.logger.info(
+                f"Found {len(raw_worksheets)} worksheets and {len(raw_dashboards)} dashboards"
+            )
+
+            # Step 2: Process worksheets through WorksheetHandler
+            worksheet_handler = WorksheetHandler()
+            processed_worksheets = {}  # name -> worksheet mapping for linking
+
+            for raw_worksheet in raw_worksheets:
+                if worksheet_handler.can_handle(raw_worksheet) > 0:
+                    processed = worksheet_handler.convert_to_json(raw_worksheet)
+                    processed_worksheets[processed["name"]] = processed
+                    result["worksheets"].append(processed)
+
+                    self.logger.info(
+                        f"Processed worksheet: {processed['name']} "
+                        f"({processed['visualization']['chart_type']}, "
+                        f"{len(processed['fields'])} fields)"
+                    )
+
+            # Step 3: Process dashboards through DashboardHandler
+            dashboard_handler = DashboardHandler()
+
+            for raw_dashboard in raw_dashboards:
+                if dashboard_handler.can_handle(raw_dashboard) > 0:
+                    processed = dashboard_handler.convert_to_json(raw_dashboard)
+
+                    # Step 4: INTEGRATION - Link worksheets to dashboard elements
+                    self._link_worksheets_to_dashboard(processed, processed_worksheets)
+
+                    result["dashboards"].append(processed)
+
+                    linked_count = sum(
+                        1
+                        for elem in processed["elements"]
+                        if elem["element_type"] == "worksheet"
+                        and elem["worksheet"] is not None
+                    )
+
+                    self.logger.info(
+                        f"Processed dashboard: {processed['name']} "
+                        f"({len(processed['elements'])} elements, "
+                        f"{linked_count} worksheets linked)"
+                    )
+
+            self.logger.info("Phase 3 processing completed successfully")
+
+        except Exception as e:
+            self.logger.error(f"Phase 3 processing failed: {str(e)}", exc_info=True)
+            # Don't raise - allow migration to continue with Phase 1-2 data
+
+    def _link_worksheets_to_dashboard(
+        self, dashboard: Dict, worksheets: Dict[str, Dict]
+    ) -> None:
+        """
+        Link worksheet objects to dashboard elements.
+
+        This is the core integration logic that makes dashboard elements self-contained
+        by embedding the full worksheet data instead of just references.
+        """
+        for element in dashboard["elements"]:
+            if element["element_type"] == "worksheet":
+                worksheet_name = element["custom_content"].get("worksheet_name")
+
+                if worksheet_name and worksheet_name in worksheets:
+                    # INTEGRATION: Embed full worksheet data in dashboard element
+                    element["worksheet"] = worksheets[worksheet_name]
+
+                    # Clean up the reference since we now have the full data
+                    element["custom_content"] = {}
+
+                    self.logger.debug(
+                        f"Linked worksheet '{worksheet_name}' to dashboard element {element['element_id']}"
+                    )
+                else:
+                    self.logger.warning(
+                        f"Worksheet '{worksheet_name}' not found for dashboard element {element['element_id']}"
+                    )
 
     def get_version(self) -> str:
         """Get version information."""

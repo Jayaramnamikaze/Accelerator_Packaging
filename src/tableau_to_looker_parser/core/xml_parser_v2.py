@@ -14,7 +14,7 @@ Key improvements over v1:
 
 import zipfile
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Union
+from typing import Dict, Iterator, List, Optional, Union, Any
 from lxml import etree as ET
 from lxml.etree import Element
 import logging
@@ -898,3 +898,596 @@ class TableauXMLParserV2:
             List of element dictionaries (enhanced)
         """
         return self.get_all_elements_enhanced(root)
+
+    # ============================================================================
+    # PHASE 3: WORKSHEET AND DASHBOARD EXTRACTION METHODS
+    # ============================================================================
+
+    def extract_worksheets(self, root: Element) -> List[Dict]:
+        """Extract all worksheet elements from Tableau XML.
+
+        Args:
+            root: Root element of the workbook
+
+        Returns:
+            List of worksheet dictionaries with field usage and visualization config
+        """
+        worksheets = []
+
+        for worksheet in root.findall(".//worksheet"):
+            worksheet_name = worksheet.get("name")
+            if not worksheet_name:
+                continue
+
+            try:
+                worksheet_data = {
+                    "name": worksheet_name,
+                    "clean_name": self._clean_name(worksheet_name),
+                    "datasource_id": self._extract_worksheet_datasource_id(worksheet),
+                    "fields": self._extract_worksheet_fields(worksheet),
+                    "visualization": self._extract_visualization_config(worksheet),
+                    "filters": self._extract_worksheet_filters(worksheet),
+                    "sorts": self._extract_worksheet_sorts(worksheet),
+                    "actions": self._extract_worksheet_actions(worksheet),
+                }
+                worksheets.append(worksheet_data)
+
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to parse worksheet '{worksheet_name}': {e}"
+                )
+                continue
+
+        self.logger.info(f"Extracted {len(worksheets)} worksheets")
+        return worksheets
+
+    def extract_dashboards(self, root: Element) -> List[Dict]:
+        """Extract all dashboard elements from Tableau XML.
+
+        Args:
+            root: Root element of the workbook
+
+        Returns:
+            List of dashboard dictionaries with zones and layout information
+        """
+        dashboards = []
+
+        for dashboard in root.findall(".//dashboard"):
+            dashboard_name = dashboard.get("name")
+            if not dashboard_name:
+                continue
+
+            try:
+                dashboard_data = {
+                    "name": dashboard_name,
+                    "clean_name": self._clean_name(dashboard_name),
+                    "title": dashboard_name.replace("_", " ").title(),
+                    "canvas_size": self._extract_dashboard_size(dashboard),
+                    "elements": self._extract_dashboard_elements(dashboard),
+                    "layout_type": self._determine_layout_type(dashboard),
+                    "global_filters": self._extract_dashboard_filters(dashboard),
+                    "responsive_config": self._extract_responsive_config(dashboard),
+                }
+                dashboards.append(dashboard_data)
+
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to parse dashboard '{dashboard_name}': {e}"
+                )
+                continue
+
+        self.logger.info(f"Extracted {len(dashboards)} dashboards")
+        return dashboards
+
+    # ============================================================================
+    # WORKSHEET PARSING HELPER METHODS
+    # ============================================================================
+
+    def _extract_worksheet_datasource_id(self, worksheet: Element) -> Optional[str]:
+        """Extract the primary datasource ID for a worksheet."""
+        datasource_elem = worksheet.find(".//datasource")
+        if datasource_elem is not None:
+            return datasource_elem.get("name") or datasource_elem.get("caption")
+        return None
+
+    def _extract_worksheet_fields(self, worksheet: Element) -> List[Dict]:
+        """Extract field usage from worksheet datasource-dependencies."""
+        fields = []
+
+        dependencies = worksheet.find(".//datasource-dependencies")
+        if dependencies is None:
+            return fields
+
+        # Extract column instances (actual field usage)
+        for column_instance in dependencies.findall("column-instance"):
+            field_data = self._parse_column_instance(column_instance, worksheet)
+            if field_data:
+                fields.append(field_data)
+
+        return fields
+
+    def _lookup_field_caption(
+        self, worksheet: Element, column_ref: str
+    ) -> Optional[str]:
+        """Look up field caption from top-level datasource column definitions."""
+        # Get the root workbook element to access top-level datasources
+        root = worksheet
+        while root.getparent() is not None:
+            root = root.getparent()
+
+        # Look in all top-level datasources for the column definition
+        for datasource in root.findall(".//datasources/datasource"):
+            for column in datasource.findall(".//column"):
+                if column.get("name") == column_ref:
+                    caption = column.get("caption")
+                    # Return caption if it exists and is not 'None'
+                    if caption and caption != "None":
+                        return caption
+
+        return None
+
+    def _parse_column_instance(
+        self, column_instance: Element, worksheet: Element
+    ) -> Optional[Dict]:
+        """Parse a column-instance element into field reference data."""
+        column_ref = column_instance.get("column", "")
+        instance_name = column_instance.get("name", "")
+        derivation = column_instance.get("derivation", "None")
+        # pivot = column_instance.get("pivot", "key")
+        field_type = column_instance.get("type", "")
+
+        if not column_ref or not instance_name:
+            return None
+
+        # Clean field name
+        field_name = column_ref.strip("[]")
+        clean_name = self._clean_name(field_name)
+
+        # Look up caption from column definition
+        caption = self._lookup_field_caption(worksheet, column_ref)
+
+        # Determine role from type and derivation
+        role = (
+            "measure"
+            if field_type == "quantitative" or derivation != "None"
+            else "dimension"
+        )
+
+        # Determine shelf placement
+        shelf = self._determine_field_shelf(worksheet, instance_name)
+
+        return {
+            "name": clean_name,
+            "original_name": column_ref,
+            "tableau_instance": instance_name,
+            "datatype": self._infer_datatype_from_type(field_type),
+            "role": role,
+            "aggregation": derivation if derivation != "None" else None,
+            "shelf": shelf,
+            "derivation": derivation,
+            "caption": caption,
+        }
+
+    def _determine_field_shelf(self, worksheet: Element, instance_name: str) -> str:
+        """Determine which shelf a field instance is placed on."""
+        # Check rows shelf
+        rows_elem = worksheet.find(".//rows")
+        if rows_elem is not None and instance_name in (rows_elem.text or ""):
+            return "rows"
+
+        # Check columns shelf
+        cols_elem = worksheet.find(".//cols")
+        if cols_elem is not None and instance_name in (cols_elem.text or ""):
+            return "columns"
+
+        # Check encodings (color, size, etc.)
+        pane = worksheet.find(".//pane")
+        if pane is not None:
+            for encoding in pane.findall(".//encoding") or []:
+                encoding_type = encoding.tag
+                if encoding.get("column") == instance_name:
+                    return encoding_type
+
+            # Check direct encoding attributes
+            encodings = pane.find("encodings")
+            if encodings is not None:
+                for child in encodings:
+                    if child.get("column") == instance_name:
+                        return child.tag
+
+        return "detail"  # Default shelf
+
+    def _extract_visualization_config(self, worksheet: Element) -> Dict:
+        """Extract visualization configuration from worksheet panes."""
+        pane = worksheet.find(".//pane")
+        if pane is None:
+            return {
+                "chart_type": "unknown",
+                "x_axis": [],
+                "y_axis": [],
+                "color": None,
+                "size": None,
+                "detail": [],
+                "tooltip": [],
+            }
+
+        # Extract mark type (chart type)
+        mark = pane.find("mark")
+        chart_type = mark.get("class", "bar").lower() if mark is not None else "bar"
+
+        # Extract field mappings
+        viz_config = {
+            "chart_type": chart_type,
+            "x_axis": self._extract_shelf_fields(worksheet, "cols"),
+            "y_axis": self._extract_shelf_fields(worksheet, "rows"),
+            "color": None,
+            "size": None,
+            "detail": [],
+            "tooltip": [],
+            "is_dual_axis": self._has_dual_axis(worksheet),
+            "show_labels": self._extract_show_labels(pane),
+            "show_totals": self._extract_show_totals(worksheet),
+        }
+
+        # Extract encodings
+        encodings = pane.find("encodings")
+        if encodings is not None:
+            for encoding in encodings:
+                encoding_type = encoding.tag
+                column = encoding.get("column", "")
+
+                if encoding_type == "color":
+                    viz_config["color"] = column
+                elif encoding_type == "size":
+                    viz_config["size"] = column
+                elif encoding_type == "detail":
+                    viz_config["detail"].append(column)
+
+        return viz_config
+
+    def _extract_shelf_fields(self, worksheet: Element, shelf_name: str) -> List[str]:
+        """Extract field names from a specific shelf (rows/cols)."""
+        shelf_elem = worksheet.find(f".//{shelf_name}")
+        if shelf_elem is None or not shelf_elem.text:
+            return []
+
+        # Parse field references from shelf text
+        fields = []
+        shelf_text = shelf_elem.text
+
+        # Extract field instance names (format: [datasource].[field_instance])
+        import re
+
+        field_pattern = r"\[([^\]]+)\]\.\[([^\]]+)\]"
+        matches = re.findall(field_pattern, shelf_text)
+
+        for datasource, field_instance in matches:
+            fields.append(field_instance)
+
+        return fields
+
+    def _extract_worksheet_sorts(self, worksheet: Element) -> List[Dict]:
+        """Extract sorting configuration from worksheet."""
+        sorts = []
+
+        for sort in worksheet.findall(".//shelf-sort-v2"):
+            sort_config = {
+                "field": sort.get("dimension-to-sort", ""),
+                "direction": sort.get("direction", "ASC"),
+                "sort_by_field": sort.get("measure-to-sort-by"),
+                "is_innermost": sort.get("is-on-innermost-dimension") == "true",
+            }
+            sorts.append(sort_config)
+
+        return sorts
+
+    def _extract_worksheet_filters(self, worksheet: Element) -> List[Dict]:
+        """Extract filter configuration from worksheet."""
+        # This is a placeholder - worksheet filters are complex
+        # Would need to parse filter elements, quick filters, etc.
+        return []
+
+    def _extract_worksheet_actions(self, worksheet: Element) -> List[Dict]:
+        """Extract action configuration from worksheet."""
+        # This is a placeholder - actions are complex
+        # Would need to parse action elements, URL actions, filter actions, etc.
+        return []
+
+    # ============================================================================
+    # DASHBOARD PARSING HELPER METHODS
+    # ============================================================================
+
+    def _extract_dashboard_size(self, dashboard: Element) -> Dict[str, int]:
+        """Extract dashboard canvas size configuration."""
+        size_elem = dashboard.find("size")
+        if size_elem is None:
+            return {"width": 1000, "height": 800}
+
+        return {
+            "width": int(size_elem.get("maxwidth", "1000")),
+            "height": int(size_elem.get("maxheight", "800")),
+            "min_width": int(size_elem.get("minwidth", "800")),
+            "min_height": int(size_elem.get("minheight", "600")),
+        }
+
+    def _extract_dashboard_elements(self, dashboard: Element) -> List[Dict]:
+        """Extract all dashboard elements with positioning."""
+        elements = []
+
+        # Extract zones with content ONLY from main dashboard zones (not device layouts)
+        # This avoids duplicates from mobile/tablet responsive layouts
+        main_zones = dashboard.find("zones")
+        if main_zones is not None:
+            for zone in main_zones.findall(".//zone[@name]"):
+                element = self._parse_dashboard_zone(zone)
+                if element:
+                    elements.append(element)
+
+        return elements
+
+    def _parse_dashboard_zone(self, zone: Element) -> Optional[Dict]:
+        """Parse a dashboard zone into an element dictionary."""
+        zone_id = zone.get("id")
+        zone_name = zone.get("name")
+
+        if not zone_id or not zone_name:
+            return None
+
+        # Extract position
+        position = self._extract_zone_position(zone)
+
+        # Extract styling
+        style = self._extract_zone_style(zone)
+
+        # Determine element type and content
+        element_type, content = self._determine_zone_content(zone)
+
+        element = {
+            "element_id": zone_id,
+            "element_type": element_type,
+            "position": position,
+            "style": style,
+            "is_interactive": True,
+            "interactions": [],
+        }
+
+        # Add type-specific content
+        if element_type == "worksheet":
+            element["worksheet_name"] = zone_name
+        elif element_type == "filter":
+            element["filter_config"] = content
+        elif element_type == "parameter":
+            element["parameter_config"] = content
+        elif element_type == "text":
+            element["text_content"] = zone_name
+
+        return element
+
+    def _extract_zone_position(self, zone: Element) -> Dict[str, float]:
+        """Extract and normalize zone position."""
+        x = int(zone.get("x", "0"))
+        y = int(zone.get("y", "0"))
+        width = int(zone.get("w", "100000"))
+        height = int(zone.get("h", "100000"))
+
+        # Normalize to 0-1 coordinates (Tableau uses 100000 as full scale)
+        return {
+            "x": x / 100000,
+            "y": y / 100000,
+            "width": width / 100000,
+            "height": height / 100000,
+            "z_index": 0,
+        }
+
+    def _extract_zone_style(self, zone: Element) -> Dict[str, Any]:
+        """Extract zone styling information."""
+        style = {
+            "background_color": None,
+            "border_color": None,
+            "border_width": 0,
+            "border_style": "none",
+            "margin": 4,
+            "padding": 0,
+        }
+
+        zone_style = zone.find("zone-style")
+        if zone_style is not None:
+            for format_elem in zone_style.findall("format"):
+                attr = format_elem.get("attr")
+                value = format_elem.get("value")
+
+                if attr == "border-color":
+                    style["border_color"] = value
+                elif attr == "border-width":
+                    style["border_width"] = int(value) if value.isdigit() else 0
+                elif attr == "border-style":
+                    style["border_style"] = value
+                elif attr == "margin":
+                    style["margin"] = int(value) if value.isdigit() else 4
+
+        return style
+
+    def _determine_zone_content(self, zone: Element) -> tuple[str, Optional[Dict]]:
+        """Determine zone content type and extract relevant data."""
+        zone_type = zone.get("type-v2", "")
+        param = zone.get("param", "")
+
+        if zone_type == "color":
+            return "filter", {
+                "filter_type": "color",
+                "field": param,
+                "filter_values": [],
+            }
+        elif param:
+            return "parameter", {"parameter_name": param, "parameter_type": "unknown"}
+        else:
+            # Default to worksheet
+            return "worksheet", None
+
+    def _extract_responsive_config(self, dashboard: Element) -> Dict[str, Any]:
+        """Extract responsive/device layout configuration."""
+        responsive = {}
+
+        device_layouts = dashboard.find("devicelayouts")
+        if device_layouts is not None:
+            for device_layout in device_layouts.findall("devicelayout"):
+                device_name = device_layout.get("name", "").lower()
+                if device_name:
+                    responsive[device_name] = {
+                        "auto_generated": device_layout.get("auto-generated") == "true"
+                    }
+
+        return responsive
+
+    # ============================================================================
+    # UTILITY HELPER METHODS
+    # ============================================================================
+
+    def _clean_name(self, name: str) -> str:
+        """Convert name to LookML-safe format."""
+        import re
+
+        # Remove brackets, convert to lowercase, replace special chars with underscore
+        clean = name.strip("[]").lower()
+        clean = re.sub(r"[^a-z0-9]+", "_", clean)
+        clean = re.sub(r"_+", "_", clean)  # Remove duplicate underscores
+        return clean.strip("_")
+
+    def _infer_datatype_from_type(self, field_type: str) -> str:
+        """Infer datatype from Tableau field type."""
+        type_mapping = {
+            "quantitative": "real",
+            "nominal": "string",
+            "ordinal": "string",
+            "temporal": "date",
+        }
+        return type_mapping.get(field_type, "string")
+
+    def _has_dual_axis(self, worksheet: Element) -> bool:
+        """Check if worksheet uses dual axis."""
+        # Look for dual axis indicators in the worksheet XML
+        panes = worksheet.findall(".//pane")
+        return len(panes) > 1
+
+    def _extract_show_labels(self, pane: Element) -> bool:
+        """Extract whether data labels are shown."""
+        style_rule = pane.find('.//style-rule[@element="mark"]')
+        if style_rule is not None:
+            format_elem = style_rule.find('format[@attr="mark-labels-show"]')
+            if format_elem is not None:
+                return format_elem.get("value") == "true"
+        return False
+
+    def _extract_show_totals(self, worksheet: Element) -> bool:
+        """Extract whether totals are shown."""
+        # Look for totals configuration in worksheet
+        totals = worksheet.find(".//totals")
+        return totals is not None
+
+    def _determine_layout_type(self, dashboard: Element) -> str:
+        """
+        Determine dashboard layout type from Tableau layout information.
+
+        Tableau Layout Types → LookML Mapping:
+        - layout-basic (absolute positioning) → free_form
+        - layout-flow horizontal → grid (horizontal flow)
+        - layout-flow vertical → newspaper (vertical stacking)
+        - Mixed flows → newspaper (complex grid)
+        - Floating elements → free_form
+        """
+        # Look for the main layout container
+        main_zones = dashboard.find("zones")
+        if main_zones is None:
+            return "free_form"  # Fallback if no zones found
+
+        # Analyze layout structure from Tableau's layout system
+        layout_analysis = self._analyze_tableau_layout_structure(main_zones)
+
+        # Map Tableau layout patterns to LookML layout types
+        if layout_analysis["has_complex_flows"]:
+            # Mixed horizontal/vertical flows with distribution strategies
+            return "newspaper"
+        elif layout_analysis["primary_flow"] == "horizontal":
+            # Primarily horizontal flow layout
+            return "grid"
+        elif layout_analysis["primary_flow"] == "vertical":
+            # Primarily vertical flow layout (dashboard style)
+            return "newspaper"
+        elif layout_analysis["has_distributed_elements"]:
+            # Elements with distribute-evenly strategy
+            return "newspaper"
+        elif layout_analysis["has_fixed_elements"]:
+            # Elements with fixed positioning
+            return "grid"
+        elif layout_analysis["element_density"] == "high":
+            # Many elements suggest structured layout
+            return "newspaper"
+        else:
+            # Default to free-form for simple/unclear layouts
+            return "free_form"
+
+    def _analyze_tableau_layout_structure(self, main_zones: Element) -> Dict[str, Any]:
+        """Analyze Tableau's layout structure to determine optimal LookML layout."""
+        analysis = {
+            "has_complex_flows": False,
+            "primary_flow": None,
+            "has_distributed_elements": False,
+            "has_fixed_elements": False,
+            "element_density": "low",
+            "flow_patterns": [],
+        }
+
+        # Find all zones with layout information
+        all_zones = main_zones.findall(".//zone")
+        named_zones = [z for z in all_zones if z.get("name")]
+
+        # Analyze flow layouts
+        flow_zones = [z for z in all_zones if z.get("type-v2") == "layout-flow"]
+        horizontal_flows = [z for z in flow_zones if z.get("param") == "horz"]
+        vertical_flows = [z for z in flow_zones if z.get("param") == "vert"]
+
+        # Analyze distribution strategies
+        distributed_zones = [
+            z for z in all_zones if z.get("layout-strategy-id") == "distribute-evenly"
+        ]
+        fixed_zones = [z for z in all_zones if z.get("is-fixed") == "true"]
+
+        # Determine primary flow direction
+        if horizontal_flows and vertical_flows:
+            analysis["has_complex_flows"] = True
+            analysis["primary_flow"] = "mixed"
+        elif len(horizontal_flows) > len(vertical_flows):
+            analysis["primary_flow"] = "horizontal"
+        elif len(vertical_flows) > len(horizontal_flows):
+            analysis["primary_flow"] = "vertical"
+
+        # Check for distribution strategies
+        if distributed_zones:
+            analysis["has_distributed_elements"] = True
+
+        # Check for fixed positioning
+        if fixed_zones:
+            analysis["has_fixed_elements"] = True
+
+        # Determine element density
+        if len(named_zones) > 8:
+            analysis["element_density"] = "high"
+        elif len(named_zones) > 4:
+            analysis["element_density"] = "medium"
+        else:
+            analysis["element_density"] = "low"
+
+        # Record flow patterns for debugging
+        analysis["flow_patterns"] = [
+            {"type": "horizontal", "count": len(horizontal_flows)},
+            {"type": "vertical", "count": len(vertical_flows)},
+            {"type": "distributed", "count": len(distributed_zones)},
+            {"type": "fixed", "count": len(fixed_zones)},
+        ]
+
+        return analysis
+
+    def _extract_dashboard_filters(self, dashboard: Element) -> List[Dict]:
+        """Extract dashboard-level filters."""
+        # This is a placeholder - dashboard filters are complex
+        return []

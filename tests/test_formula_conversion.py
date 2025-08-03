@@ -6,8 +6,8 @@ Tests the end-to-end conversion from Tableau formulas to LookML SQL expressions.
 """
 
 import pytest
-from src.tableau_to_looker_parser.converters.formula_parser import FormulaParser
-from src.tableau_to_looker_parser.converters.ast_to_lookml_converter import (
+from tableau_to_looker_parser.converters.formula_parser import FormulaParser
+from tableau_to_looker_parser.converters.ast_to_lookml_converter import (
     ASTToLookMLConverter,
 )
 
