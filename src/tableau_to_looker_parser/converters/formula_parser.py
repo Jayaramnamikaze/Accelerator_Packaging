@@ -215,6 +215,12 @@ class FormulaParser:
     ) -> FormulaParseResult:
         """Parse a Tableau formula and return the result."""
         try:
+            # comment = ""
+            formula = formula
+            if "//" in formula:
+                parts = formula.split("//", 1)
+                formula = parts[0].rstrip()
+                # comment = "//" + parts[1].strip()
             # Reset state
             self.tokens = self.lexer.tokenize(formula)
             self.current = 0
