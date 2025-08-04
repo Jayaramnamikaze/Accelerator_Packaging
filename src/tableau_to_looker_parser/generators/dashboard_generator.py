@@ -838,8 +838,8 @@ class DashboardGenerator(BaseGenerator):
         """Write dashboard content to file."""
         output_path = self._ensure_output_dir(output_dir)
 
-        # Create dashboard filename
-        filename = f"{dashboard_name}{self.dashboard_extension}{self.lookml_extension}"
+        # Create dashboard filename - dashboards use .dashboard extension only
+        filename = f"{dashboard_name}{self.dashboard_extension}"
         file_path = output_path / filename
 
         return self._write_file(content, file_path)
