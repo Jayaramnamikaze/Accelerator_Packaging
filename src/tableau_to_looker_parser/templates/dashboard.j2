@@ -1,40 +1,24 @@
 - dashboard: {{ dashboard_name | clean_name }}
-  title: "{{ title }}"
+  title: {{ title }}
   layout: {{ layout_type }}
   {% if preferred_viewer %}preferred_viewer: {{ preferred_viewer }}{% endif %}
-  {% if description %}description: "{{ description }}"{% endif %}
-  {% if preferred_slug %}preferred_slug: "{{ preferred_slug }}"{% endif %}
-
-  {% if filters %}
-  filters:
-  {% for filter in filters %}
-  - name: {{ filter.name }}
-    title: "{{ filter.title }}"
-    type: {{ filter.type }}
-    {% if filter.default_value is defined %}default_value: "{{ filter.default_value }}"{% endif %}
-    {% if filter.allow_multiple_values is defined %}allow_multiple_values: {{ filter.allow_multiple_values | lower }}{% endif %}
-    {% if filter.required is defined %}required: {{ filter.required | lower }}{% endif %}
-    {% if filter.model %}model: {{ filter.model }}{% endif %}
-    {% if filter.explore %}explore: {{ filter.explore | clean_name }}{% endif %}
-    {% if filter.field %}field: {{ filter.field }}{% endif %}
-  {% endfor %}
-  {% endif %}
-
+  {% if preferred_slug %}preferred_slug: {{ preferred_slug }}{% endif %}
   elements:
   {% for element in elements %}
-  - name: {{ element.name | clean_name }}
-    title: "{{ element.title }}"
-    type: {{ element.type }}
+  - title: {{ element.title }}
+    name: {{ element.name | clean_name }}
     {% if element.model and element.explore %}
     model: {{ element.model }}
     explore: {{ element.explore | clean_name }}
+    {% endif %}
+    type: {{ element.type }}
     {% if element.fields %}
     fields: [{{ element.fields | join(', ') }}]
     {% endif %}
     {% if element.filters %}
     filters:
       {% for filter_key, filter_value in element.filters.items() %}
-      {{ filter_key }}: "{{ filter_value }}"
+      {{ filter_key }}: {{ filter_value }}
       {% endfor %}
     {% endif %}
     {% if element.sorts %}
@@ -46,41 +30,69 @@
     {% if element.column_limit %}
     column_limit: {{ element.column_limit }}
     {% endif %}
+    hidden_fields: []
+    hidden_points_if_no: []
+    series_labels: {}
+    show_view_names: false
+    {% if element.type == 'looker_grid' %}
+    show_row_numbers: true
+    transpose: false
+    truncate_text: true
+    hide_totals: false
+    hide_row_totals: false
+    size_to_fit: true
+    table_theme: white
+    limit_displayed_rows: false
+    enable_conditional_formatting: false
+    header_text_alignment: left
+    header_font_size: 12
+    rows_font_size: 12
+    conditional_formatting_include_totals: false
+    conditional_formatting_include_nulls: false
     {% endif %}
-    {% if element.y_axes %}
-    y_axes: {{ element.y_axes | tojson }}
-    {% endif %}
-    {% if element.x_axis_gridlines is defined %}
-    x_axis_gridlines: {{ element.x_axis_gridlines | lower }}
-    {% endif %}
-    {% if element.y_axis_gridlines is defined %}
-    y_axis_gridlines: {{ element.y_axis_gridlines | lower }}
-    {% endif %}
-    {% if element.show_y_axis_labels is defined %}
-    show_y_axis_labels: {{ element.show_y_axis_labels | lower }}
-    {% endif %}
-    {% if element.show_y_axis_ticks is defined %}
-    show_y_axis_ticks: {{ element.show_y_axis_ticks | lower }}
-    {% endif %}
-    {% if element.y_axis_combined is defined %}
-    y_axis_combined: {{ element.y_axis_combined | lower }}
-    {% endif %}
-    {% if element.series_colors %}
-    series_colors:
-      {% for field, color in element.series_colors.items() %}
-      {{ field }}: "{{ color }}"
-      {% endfor %}
-    {% endif %}
+    x_axis_gridlines: false
+    y_axis_gridlines: true
+    show_y_axis_labels: true
+    show_y_axis_ticks: true
+    y_axis_tick_density: default
+    y_axis_tick_density_custom: 5
+    show_x_axis_label: true
+    show_x_axis_ticks: true
+    y_axis_scale_mode: linear
+    x_axis_reversed: false
+    y_axis_reversed: false
+    plot_size_by_field: false
+    trellis: ''
+    stacking: ''
+    legend_position: center
+    point_style: none
+    show_value_labels: false
+    label_density: 25
+    x_axis_scale: auto
+    y_axis_combined: true
+    ordering: none
+    show_null_labels: false
+    show_totals_labels: false
+    show_silhouette: false
+    totals_color: "#808080"
+    defaults_version: 0
     {% if element.listen %}
     listen:
       {% for listen_key, listen_value in element.listen.items() %}
       {{ listen_key }}: {{ listen_value }}
       {% endfor %}
+    {% else %}
+    listen: {}
     {% endif %}
     {% if element.layout %}
-    row: {{ element.layout.row }}
-    col: {{ element.layout.col }}
-    width: {{ element.layout.width }}
-    height: {{ element.layout.height }}
+    row: {{ element.layout.row if element.layout.row is not none else '' }}
+    col: {{ element.layout.col if element.layout.col is not none else '' }}
+    width: {{ element.layout.width if element.layout.width is not none else '' }}
+    height: {{ element.layout.height if element.layout.height is not none else '' }}
+    {% else %}
+    row:
+    col:
+    width:
+    height:
     {% endif %}
   {% endfor %}
