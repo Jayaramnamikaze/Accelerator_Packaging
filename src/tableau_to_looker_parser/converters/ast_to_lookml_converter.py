@@ -134,31 +134,48 @@ class ASTToLookMLConverter:
             "STARTSWITH": "STARTS_WITH({0}, {1})",  # STARTSWITH(string, prefix) → STARTS_WITH(string, prefix) for BigQuery
             "ENDSWITH": "ENDS_WITH({0}, {1})",  # ENDSWITH(string, suffix) → ENDS_WITH(string, suffix) for BigQuery
             "REPLACE": "REPLACE",  # Direct mapping
-            "FIND": "STRPOS({0}, {1})",  # FIND(string, substring) → STRPOS(string, substring) for BigQuery
-            "SPLIT": "SPLIT({0}, {1})[OFFSET(CASE WHEN {2} < 0 THEN {2} ELSE {2} - 1 END)]",  # SPLIT(string, delimiter, index) → SPLIT(string, delimiter)[OFFSET(...)] for BigQuery
+            "FIND": "FIND_SPECIAL",  # FIND(string, substring) → STRPOS(string, substring) for BigQuery
+            "SPLIT": "SPLIT({0}, {1})[OFFSET(CASE WHEN {2} < 0 THEN ARRAY_LENGTH(SPLIT({0}, {1})) + {2} ELSE {2} - 1 END)]",  # SPLIT(string, delimiter, index) → SPLIT(string, delimiter)[OFFSET(...)] for BigQuery
             "LTRIM": "LTRIM",  # Direct mapping
             "RTRIM": "RTRIM",  # Direct mapping
             # Additional string functions from Excel mapping
             "ASCII": "ASCII",  # ASCII code of character
             "CHAR": "CHR",  # Character from ASCII code (Tableau CHAR → SQL CHR)
             "PROPER": "INITCAP",  # Proper case (Tableau PROPER → SQL INITCAP)
+            "SPACE": "REPEAT('\\u2009', {0})",  # SPACE(n) → REPEAT(' ', n)
             # Math functions - direct mapping
             "ABS": "ABS",
             "ROUND": "ROUND",
             "CEILING": "CEIL",  # Tableau CEILING → SQL CEIL
             "FLOOR": "FLOOR",
             "SQRT": "SQRT",
-            "POWER": "POWER",
+            "POWER": "POW",
+            "DIV": "DIV",
+            "SQUARE": "POW({0}, 2)",  # SQUARE(x) → POWER(x, 2)
+            "PI": "ACOS(-1)",  # PI() → ACOS(-1) for BigQuery
+            "SIGN": "SIGN",
+            "SIN": "SIN",
+            "COS": "COS",
+            "TAN": "TAN",
+            "COT": "1 /NULLIF(TAN({0}),0)",  # COT(x) → 1 / TAN(x)
+            "ASIN": "ASIN",
+            "ACOS": "ACOS",
+            "ATAN": "ATAN",
+            "LOG": "LOG",
+            "LN": "LN",
             # Date functions - more complex, handled specially
             "YEAR": "EXTRACT(YEAR FROM {})",
             "MONTH": "EXTRACT(MONTH FROM {})",
             "DAY": "EXTRACT(DAY FROM {})",
+            "WEEK": "EXTRACT(WEEK FROM {})",
+            "QUARTER": "EXTRACT(QUARTER FROM {})",
             "NOW": "CURRENT_TIMESTAMP",
             "TODAY": "CURRENT_DATE",
             # Additional date functions from Excel mapping - need special handling
             "DATEADD": "DATEADD_SPECIAL",  # Special handling for INTERVAL syntax
             "DATEDIFF": "DATEDIFF_SPECIAL",  # Special handling for unit parameter
             "DATETRUNC": "DATETRUNC_SPECIAL",  # Special handling for unit parameter
+            "DATEPART": "DATEPART_SPECIAL",
             "PARSE_DATE": "PARSE_DATE('%Y-%m-%d', {0})",  # PARSE_DATE format
             # Type conversion functions from Excel mapping
             "FLOAT": "CAST({0} AS FLOAT64)",  # Convert to float
@@ -169,6 +186,9 @@ class ASTToLookMLConverter:
             # Logical functions from Excel mapping
             "IFNULL": "IFNULL",  # NULL handling function
             "ISNULL": "{0} IS NULL",  # NULL check: ISNULL([field]) -> field IS NULL
+            "ZN": "IFNULL({0}, 0)",  # Zero if null: ZN([field]) -> IFNULL(field, 0)
+            "MAKEPOINT": "MAKEPOINT_SPECIAL",
+            "MAKELINE": "MAKELINE_SPECIAL",
         }
 
     # CONVERSION METHODS - Each handles a specific AST node type
@@ -268,8 +288,8 @@ class ASTToLookMLConverter:
         # Handle special operators
         operator = node.operator
         if operator == "^":
-            # Tableau uses ^ for power, SQL uses POWER function
-            return f"POWER({left_expr}, {right_expr})"
+            # Tableau uses ^ for power, SQL uses POW function
+            return f"POW({left_expr}, {right_expr})"
         elif operator == "%":
             # Modulo operator
             return f"MOD({left_expr}, {right_expr})"
@@ -378,7 +398,7 @@ class ASTToLookMLConverter:
             arg_expr = self._convert_node(arg, table_context)
             converted_args.append(arg_expr)
 
-        # Look up function in registry
+        # Look up function in registry for other functions
         if function_name in self.function_registry:
             lookml_function = self.function_registry[function_name]
 
@@ -386,36 +406,88 @@ class ASTToLookMLConverter:
             if lookml_function == "DATEADD_SPECIAL":
                 if len(converted_args) == 3:
                     date_expr = converted_args[0]
+                    date_expr = date_expr.strip("'\"").upper()
                     interval_expr = converted_args[1]
                     unit_expr = converted_args[2].strip(
                         "'\""
                     )  # Remove quotes from unit
-                    return (
-                        f"DATE_ADD({date_expr}, INTERVAL {interval_expr} {unit_expr})"
-                    )
+                    if (
+                        date_expr == "HOUR"
+                        or date_expr == "MINUTE"
+                        or date_expr == "SECOND"
+                    ):
+                        return f"DATETIME_ADD({unit_expr}, INTERVAL {interval_expr} {date_expr})"
+                    else:
+                        return f"DATE_ADD({unit_expr}, INTERVAL {interval_expr} {date_expr})"
                 else:
                     return (
                         f"/* DATEADD: expects 3 arguments, got {len(converted_args)} */"
                     )
             elif lookml_function == "DATEDIFF_SPECIAL":
                 if len(converted_args) == 3:
-                    start_expr = converted_args[0]
-                    end_expr = converted_args[1]
-                    unit_expr = converted_args[2].strip(
-                        "'\""
-                    )  # Remove quotes from unit
-                    return f"DATE_DIFF({end_expr}, {start_expr}, {unit_expr})"
+                    date_expr = converted_args[0]
+                    date_expr = date_expr.strip("'\"").upper()
+                    start_expr = converted_args[1].strip("'\"")
+                    end_expr = converted_args[2].strip("'\"")  # Remove quotes from unit
+                    if (
+                        date_expr == "HOUR"
+                        or date_expr == "MINUTE"
+                        or date_expr == "SECOND"
+                    ):
+                        return f"DATETIME_DIFF({end_expr}, {start_expr}, {date_expr})"
+                    else:
+                        return f"DATE_DIFF({end_expr}, {start_expr}, {date_expr})"
                 else:
                     return f"/* DATEDIFF: expects 3 arguments, got {len(converted_args)} */"
             elif lookml_function == "DATETRUNC_SPECIAL":
                 if len(converted_args) == 2:
                     date_expr = converted_args[0]
+                    date_expr = date_expr.strip("'\"")
                     unit_expr = converted_args[1].strip(
                         "'\""
                     )  # Remove quotes from unit
-                    return f"DATE_TRUNC({date_expr}, {unit_expr})"
+                    return f"DATE_TRUNC({unit_expr}, {date_expr})"
                 else:
                     return f"/* DATETRUNC: expects 2 arguments, got {len(converted_args)} */"
+            elif lookml_function == "DATEPART_SPECIAL":
+                if len(converted_args) == 2:
+                    date_expr = converted_args[0]
+                    date_expr = date_expr.strip("'\"").upper()
+                    unit_expr = converted_args[1].strip("'\"")
+                    return f"EXTRACT({date_expr} FROM {unit_expr})"
+                else:
+                    return f"/* DATEPART: expects 2 arguments, got {len(converted_args)} */"
+            elif lookml_function == "FIND_SPECIAL":
+                if len(converted_args) == 3:
+                    return f"STRPOS(SUBSTR({converted_args[0]}, {converted_args[2]}), {converted_args[1]}) + {converted_args[2]} - 1"
+                elif len(converted_args) == 2:
+                    return f"STRPOS({converted_args[0]}, {converted_args[1]})"
+                else:
+                    return f"/* FIND: expects 2 or 3 arguments, got {len(converted_args)} */"
+            elif lookml_function == "LOG":
+                if len(converted_args) == 1:
+                    # LOG(value) - use base 10 as default
+                    return f"LOG({converted_args[0]},10)"  # LOG base 10
+                elif len(converted_args) == 2:
+                    # LOG(value, base) - use specified base
+                    return f"LOG({converted_args[0]}, {converted_args[1]})"
+                else:
+                    return f"/* LOG: expects 1 or 2 arguments, got {len(converted_args)} */"
+            elif lookml_function == "MAKEPOINT_SPECIAL":
+                if len(converted_args) == 2:
+                    lat_expr = converted_args[0]
+                    lng_expr = converted_args[1]
+                    return f"ST_GEOGPOINT({lng_expr}, {lat_expr})"
+                else:
+                    return f"/* MAKEPOINT expects 2 arguments, got {len(converted_args)} */"
+
+            elif lookml_function == "MAKELINE_SPECIAL":
+                if len(converted_args) == 2:
+                    return f"ST_MAKELINE({converted_args[0]}, {converted_args[1]})"
+                else:
+                    return (
+                        f"/* MAKELINE expects 2 arguments, got {len(converted_args)} */"
+                    )
 
             # Handle special function formats
             elif "{}" in lookml_function:
@@ -442,7 +514,10 @@ class ASTToLookMLConverter:
                     "CURRENT_TIMESTAMP",
                     "CURRENT_DATE",
                 ]:
-                    return lookml_function  # No parentheses for these
+                    return f"{lookml_function}()"
+                # Handle functions where lookml_function is an expression with parentheses already
+                elif "(" in lookml_function and ")" in lookml_function:
+                    return lookml_function
                 else:
                     return f"{lookml_function}({args_str})"
         else:
