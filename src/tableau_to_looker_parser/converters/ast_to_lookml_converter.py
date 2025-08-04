@@ -157,6 +157,8 @@ class ASTToLookMLConverter:
             "SIN": "SIN",
             "COS": "COS",
             "TAN": "TAN",
+            "COT": "1 /NULLIF(TAN({0}),0)",  # COT(x) → 1 / TAN(x)
+            "ASIN": "ASIN",
             "ACOS": "ACOS",
             "ATAN": "ATAN",
             "LOG": "LOG",
@@ -185,6 +187,8 @@ class ASTToLookMLConverter:
             "IFNULL": "IFNULL",  # NULL handling function
             "ISNULL": "{0} IS NULL",  # NULL check: ISNULL([field]) -> field IS NULL
             "ZN": "IFNULL({0}, 0)",  # Zero if null: ZN([field]) -> IFNULL(field, 0)
+            "MAKEPOINT": "MAKEPOINT_SPECIAL",
+            "MAKELINE": "MAKELINE_SPECIAL",
         }
 
     # CONVERSION METHODS - Each handles a specific AST node type
@@ -394,17 +398,6 @@ class ASTToLookMLConverter:
             arg_expr = self._convert_node(arg, table_context)
             converted_args.append(arg_expr)
 
-        # Special handling for LOG function to support both 1 and 2 arguments
-        if function_name == "LOG":
-            if len(converted_args) == 1:
-                # LOG(value) - use base 10 as default
-                return f"LOG({converted_args[0]},10)"  # LOG base 10
-            elif len(converted_args) == 2:
-                # LOG(value, base) - use specified base
-                return f"LOG({converted_args[0]}, {converted_args[1]})"
-            else:
-                return f"/* LOG: expects 1 or 2 arguments, got {len(converted_args)} */"
-
         # Look up function in registry for other functions
         if function_name in self.function_registry:
             lookml_function = self.function_registry[function_name]
@@ -471,6 +464,31 @@ class ASTToLookMLConverter:
                     return f"STRPOS({converted_args[0]}, {converted_args[1]})"
                 else:
                     return f"/* FIND: expects 2 or 3 arguments, got {len(converted_args)} */"
+            elif lookml_function == "LOG":
+                if len(converted_args) == 1:
+                    # LOG(value) - use base 10 as default
+                    return f"LOG({converted_args[0]},10)"  # LOG base 10
+                elif len(converted_args) == 2:
+                    # LOG(value, base) - use specified base
+                    return f"LOG({converted_args[0]}, {converted_args[1]})"
+                else:
+                    return f"/* LOG: expects 1 or 2 arguments, got {len(converted_args)} */"
+            elif lookml_function == "MAKEPOINT_SPECIAL":
+                if len(converted_args) == 2:
+                    lat_expr = converted_args[0]
+                    lng_expr = converted_args[1]
+                    return f"ST_GEOGPOINT({lng_expr}, {lat_expr})"
+                else:
+                    return f"/* MAKEPOINT expects 2 arguments, got {len(converted_args)} */"
+
+            elif lookml_function == "MAKELINE_SPECIAL":
+                if len(converted_args) == 2:
+                    return f"ST_MAKELINE({converted_args[0]}, {converted_args[1]})"
+                else:
+                    return (
+                        f"/* MAKELINE expects 2 arguments, got {len(converted_args)} */"
+                    )
+
             # Handle special function formats
             elif "{}" in lookml_function:
                 # Special format like EXTRACT(YEAR FROM {})
