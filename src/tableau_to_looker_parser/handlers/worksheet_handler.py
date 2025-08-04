@@ -5,10 +5,13 @@ Transforms the raw worksheet data from xml_parser_v2.extract_worksheets()
 into validated WorksheetSchema objects.
 """
 
+import logging
 from typing import Dict, List, Optional, Any
 from ..handlers.base_handler import BaseHandler
 from ..models.worksheet_models import WorksheetSchema, ChartType
 from ..converters.enhanced_chart_type_detector import EnhancedChartTypeDetector
+
+logger = logging.getLogger(__name__)
 
 
 class WorksheetHandler(BaseHandler):
@@ -172,15 +175,20 @@ class WorksheetHandler(BaseHandler):
 
         # Enhance with advanced chart type detection
         if self.enable_enhanced_detection and self.chart_detector:
+            logger.debug(
+                f"Running enhanced detection for worksheet: {worksheet_data.get('name', 'unknown')}"
+            )
             # Prepare data for enhanced detection
             detection_data = {
                 "name": worksheet_data.get("name", ""),
                 "fields": fields,
                 "visualization": viz_config,
             }
+            logger.debug(f"Detection input data: {detection_data}")
 
             # Run enhanced detection
             detection_result = self.chart_detector.detect_chart_type(detection_data)
+            logger.debug(f"Enhanced detection result: {detection_result}")
 
             # Update visualization config with enhanced results
             viz_config.update(
@@ -188,13 +196,22 @@ class WorksheetHandler(BaseHandler):
                     "chart_type": detection_result["chart_type"],
                     "enhanced_detection": {
                         "confidence": detection_result["confidence"],
-                        "method": detection_result["method"],
+                        "method": detection_result["method"].value
+                        if hasattr(detection_result["method"], "value")
+                        else str(detection_result["method"]),
                         "reasoning": detection_result.get("reasoning", ""),
                         "is_dual_axis": detection_result.get("is_dual_axis", False),
                         "primary_type": detection_result.get("primary_type"),
                         "secondary_type": detection_result.get("secondary_type"),
                     },
                 }
+            )
+            logger.debug(
+                f"Updated visualization config chart_type: {viz_config.get('chart_type')}"
+            )
+        else:
+            logger.debug(
+                f"Enhanced detection disabled or detector missing: enabled={self.enable_enhanced_detection}, detector={self.chart_detector is not None}"
             )
 
         return viz_config

@@ -19,3 +19,10 @@ test_worksheet_handler_output.json
 xml_parser_phase3_sample_output.json
 test_output/processed_pipeline_output.json
 sample_twb_files/Bar_charts.twb
+
+# Test output directories
+test_output/
+temp_output/
+dashboard_test_output/
+bar_charts_output/
+unified_label_test_output/

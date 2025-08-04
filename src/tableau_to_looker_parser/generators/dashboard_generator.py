@@ -155,10 +155,17 @@ class DashboardGenerator(BaseGenerator):
         model_name = migration_data.get("metadata", {}).get(
             "project_name", "tableau_migration"
         )
-        explore_name = worksheet.clean_name
+        # Use main table explore instead of worksheet-specific explores
+        main_table = migration_data.get("tables", [{}])[0]
+        explore_name = (
+            main_table.get("name", "main_table") if main_table else "main_table"
+        )
 
         # Build fields array from worksheet field usage
-        fields = self._build_fields_from_worksheet(worksheet)
+        fields = self._build_fields_from_worksheet(worksheet, explore_name)
+
+        # Use existing dual-axis detection from visualization config
+        is_dual_axis = getattr(worksheet.visualization, "is_dual_axis", False)
 
         # Build filters from worksheet
         filters = self._build_filters_from_worksheet(worksheet)
@@ -196,10 +203,13 @@ class DashboardGenerator(BaseGenerator):
         if fill_fields:
             lookml_element["fill_fields"] = fill_fields
 
-        # Add visualization options
-        viz_options = self._extract_viz_options_from_worksheet(worksheet)
-        if viz_options:
-            lookml_element["viz_options"] = viz_options
+        # Add dual-axis configuration if detected
+        if is_dual_axis or self._is_dual_axis_chart_type(chart_type):
+            dual_axis_config = self._generate_dual_axis_config(fields, explore_name)
+            lookml_element.update(dual_axis_config)
+
+        # Note: Visualization options are handled in the explore/view definitions
+        # LookML dashboards should not contain detailed viz options
 
         return lookml_element
 
@@ -272,7 +282,7 @@ class DashboardGenerator(BaseGenerator):
 
         return lookml_filters
 
-    def _build_fields_from_worksheet(self, worksheet) -> List[str]:
+    def _build_fields_from_worksheet(self, worksheet, explore_name: str) -> List[str]:
         """Build fields array from worksheet fields."""
         fields = []
 
@@ -280,12 +290,79 @@ class DashboardGenerator(BaseGenerator):
         worksheet_fields = worksheet.fields if hasattr(worksheet, "fields") else []
 
         for field in worksheet_fields:
-            # Convert to explore.field format
+            # Skip internal fields - handle both dict and object forms
+            is_internal = False
+            if hasattr(field, "is_internal"):
+                is_internal = field.is_internal
+            elif hasattr(field, "get"):
+                is_internal = field.get("is_internal", False)
+
+            if is_internal:
+                field_name_for_log = getattr(field, "name", None) or (
+                    field.get("name") if hasattr(field, "get") else "unknown"
+                )
+                logger.debug(f"Skipping internal field: {field_name_for_log}")
+                continue
+
+            # Convert to explore.field format using main explore (lowercase)
             field_name = field.name if hasattr(field, "name") else field.get("name", "")
             if field_name:
-                fields.append(f"{worksheet.clean_name}.{field_name}")
+                # Add proper measure aggregation types for dashboard fields
+                aggregated_field_name = self._add_measure_aggregation_type(
+                    field_name, field
+                )
+                fields.append(f"{explore_name.lower()}.{aggregated_field_name}")
 
         return fields
+
+    def _add_measure_aggregation_type(self, field_name: str, field) -> str:
+        """Add proper aggregation type to measure field names for dashboard references."""
+        # Get field type from field object if available
+        field_type = getattr(field, "type", None) or getattr(field, "role", "dimension")
+
+        # Check if this is a measure field
+        if field_type == "measure" or field_name.lower() in [
+            "sales",
+            "profit",
+            "quantity",
+            "discount",
+        ]:
+            # Map common measure names to appropriate aggregation types
+            measure_mappings = {
+                "sales": "total_sales",
+                "profit": "total_profit",
+                "quantity": "total_quantity",
+                "discount": "avg_discount",
+                "revenue": "total_revenue",
+                "amount": "total_amount",
+                "price": "avg_price",
+                "cost": "total_cost",
+            }
+
+            field_lower = field_name.lower()
+
+            # Use explicit mapping if available
+            if field_lower in measure_mappings:
+                return measure_mappings[field_lower]
+
+            # For other numeric measures, default to total/sum
+            if any(
+                keyword in field_lower
+                for keyword in ["sales", "profit", "revenue", "amount", "cost"]
+            ):
+                return f"total_{field_name.lower()}"
+            elif any(keyword in field_lower for keyword in ["count", "number"]):
+                return f"count_{field_name.lower()}"
+            elif any(
+                keyword in field_lower
+                for keyword in ["rate", "percent", "avg", "average"]
+            ):
+                return f"avg_{field_name.lower()}"
+            else:
+                return f"sum_{field_name.lower()}"
+
+        # Return dimension fields as-is
+        return field_name
 
     def _build_filters_from_worksheet(self, worksheet) -> Dict[str, str]:
         """Build filters dictionary from worksheet filters."""
@@ -351,14 +428,131 @@ class DashboardGenerator(BaseGenerator):
             "pie": "looker_pie",
             "scatter": "looker_scatter",
             "text": "single_value",
+            "text_table": "looker_grid",  # Crosstab/pivot table
             "map": "looker_map",
             "table": "looker_grid",
-            "bar_and_line": "looker_line",  # Dual-axis as line chart
-            "bar_and_area": "looker_area",  # Dual-axis as area chart
+            # Dual-axis charts use native Looker dual-axis support
+            "bar_and_line": "looker_line",  # Line chart with dual-axis
+            "bar_and_area": "looker_area",  # Area chart with dual-axis
+            "line_and_bar": "looker_column",  # Column chart with dual-axis
             "unknown": "looker_column",  # Default fallback
         }
 
         return chart_type_mapping.get(tableau_chart_type.lower(), "looker_column")
+
+    def _is_dual_axis_chart_type(self, chart_type: str) -> bool:
+        """Check if chart type indicates dual-axis visualization."""
+        dual_axis_types = [
+            "bar_and_line",
+            "bar_and_area",
+            "line_and_bar",
+            "bar_and_scatter",
+            "line_and_area",
+        ]
+        return chart_type in dual_axis_types
+
+    def _generate_dual_axis_config(self, fields: List[str], explore_name: str) -> Dict:
+        """Generate y_axes configuration for dual-axis charts."""
+        if not fields:
+            return {}
+
+        # Extract measure fields (those with aggregation prefixes)
+        measure_fields = [
+            f
+            for f in fields
+            if any(
+                prefix in f.lower() for prefix in ["total_", "sum_", "avg_", "count_"]
+            )
+        ]
+
+        if len(measure_fields) < 2:
+            # Single measure, still add basic y_axes for consistency
+            return {
+                "y_axes": [
+                    {
+                        "label": "",
+                        "orientation": "left",
+                        "series": [
+                            {
+                                "axisId": measure_fields[0]
+                                if measure_fields
+                                else fields[0],
+                                "id": measure_fields[0]
+                                if measure_fields
+                                else fields[0],
+                                "name": self._get_field_display_name(
+                                    measure_fields[0] if measure_fields else fields[0]
+                                ),
+                            }
+                        ],
+                        "showLabels": True,
+                        "showValues": True,
+                        "valueFormat": '0,"K"',
+                        "unpinAxis": False,
+                        "tickDensity": "default",
+                        "type": "linear",
+                    }
+                ]
+            }
+
+        # Multiple measures - create dual-axis configuration
+        series = []
+        colors = ["#5C8BB6", "#ED9149", "#4E7599", "#D56339"]  # Color palette
+
+        for i, field in enumerate(measure_fields[:4]):  # Limit to 4 measures
+            series.append(
+                {
+                    "axisId": field,
+                    "id": field,
+                    "name": self._get_field_display_name(field),
+                }
+            )
+
+        config = {
+            "y_axes": [
+                {
+                    "label": "",
+                    "orientation": "left",
+                    "series": series,
+                    "showLabels": True,
+                    "showValues": True,
+                    "valueFormat": '0,"K"',
+                    "unpinAxis": False,
+                    "tickDensity": "default",
+                    "type": "linear",
+                }
+            ],
+            "x_axis_gridlines": False,
+            "y_axis_gridlines": False,
+            "show_y_axis_labels": True,
+            "show_y_axis_ticks": True,
+            "y_axis_combined": True,
+            "series_colors": {},
+        }
+
+        # Add series colors
+        for i, field in enumerate(measure_fields[: len(colors)]):
+            config["series_colors"][field] = colors[i]
+
+        return config
+
+    def _get_field_display_name(self, field: str) -> str:
+        """Convert field name to display name."""
+        if not field:
+            return ""
+
+        # Remove explore prefix (e.g., "orders.total_sales" -> "total_sales")
+        if "." in field:
+            field = field.split(".")[-1]
+
+        # Remove aggregation prefix and title case
+        field = (
+            field.replace("total_", "")
+            .replace("sum_", "")
+            .replace("avg_", "")
+            .replace("count_", "")
+        )
+        return field.replace("_", " ").title()
 
     def _extract_viz_options_from_worksheet(self, worksheet) -> Dict:
         """Extract comprehensive visualization options from worksheet configuration."""
@@ -559,8 +753,8 @@ class DashboardGenerator(BaseGenerator):
 
         # Base position from normalized coordinates
         base_layout = {
-            "row": int(element.position.y * 20),
-            "col": int(element.position.x * 24),
+            "row": max(0, int(element.position.y * 20)),
+            "col": max(0, int(element.position.x * 24)),
             "width": max(1, int(element.position.width * 24)),
             "height": max(1, int(element.position.height * 20)),
         }

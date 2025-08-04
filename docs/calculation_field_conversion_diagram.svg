@@ -1,0 +1,229 @@
+<svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1200" height="800" fill="#f8fafc"/>
+
+  <!-- Title -->
+  <text x="600" y="40" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#1e293b">
+    Tableau Calculated Field → LookML Conversion Approach
+  </text>
+
+  <!-- Step 1: Input Formula -->
+  <rect x="50" y="80" width="280" height="120" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+  <text x="190" y="105" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#1e40af">
+    Step 1: Input Formula
+  </text>
+  <text x="190" y="130" text-anchor="middle" font-family="Monaco, monospace" font-size="12" fill="#1e40af">
+    IF [Sales] > 1000
+  </text>
+  <text x="190" y="150" text-anchor="middle" font-family="Monaco, monospace" font-size="12" fill="#1e40af">
+    THEN "High"
+  </text>
+  <text x="190" y="170" text-anchor="middle" font-family="Monaco, monospace" font-size="12" fill="#1e40af">
+    ELSE "Low" END
+  </text>
+
+  <!-- Arrow 1 -->
+  <path d="M 340 140 L 380 140" stroke="#4b5563" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+  <text x="360" y="135" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4b5563">Tokenize</text>
+
+  <!-- Step 2: Tokens -->
+  <rect x="390" y="80" width="280" height="120" rx="10" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+  <text x="530" y="105" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#92400e">
+    Step 2: Tokens
+  </text>
+  <text x="530" y="125" text-anchor="middle" font-family="Monaco, monospace" font-size="10" fill="#92400e">
+    [IF, [Sales], >, 1000, THEN,
+  </text>
+  <text x="530" y="140" text-anchor="middle" font-family="Monaco, monospace" font-size="10" fill="#92400e">
+    "High", ELSE, "Low", END]
+  </text>
+  <text x="530" y="165" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#92400e">
+    • Keywords identified
+  </text>
+  <text x="530" y="180" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#92400e">
+    • Fields &amp; values parsed
+  </text>
+
+  <!-- Arrow 2 -->
+  <path d="M 680 140 L 720 140" stroke="#4b5563" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+  <text x="700" y="135" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#4b5563">Parse</text>
+
+  <!-- Step 3: AST Tree -->
+  <rect x="730" y="80" width="280" height="120" rx="10" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
+  <text x="870" y="105" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#047857">
+    Step 3: AST Tree
+  </text>
+
+  <!-- Tree structure -->
+  <g transform="translate(820, 120)">
+    <!-- Root IF node -->
+    <circle cx="50" cy="20" r="15" fill="#047857" stroke="white" stroke-width="2"/>
+    <text x="50" y="25" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="white">IF</text>
+
+    <!-- Condition branch -->
+    <line x1="40" y1="30" x2="20" y2="45" stroke="#047857" stroke-width="1.5"/>
+    <circle cx="20" cy="50" r="12" fill="#10b981"/>
+    <text x="20" y="54" text-anchor="middle" font-family="Arial, sans-serif" font-size="8" fill="white">&gt;</text>
+
+    <!-- THEN branch -->
+    <line x1="50" y1="35" x2="50" y2="45" stroke="#047857" stroke-width="1.5"/>
+    <circle cx="50" cy="50" r="12" fill="#10b981"/>
+    <text x="50" y="55" text-anchor="middle" font-family="Arial, sans-serif" font-size="7" fill="white">High</text>
+
+    <!-- ELSE branch -->
+    <line x1="60" y1="30" x2="80" y2="45" stroke="#047857" stroke-width="1.5"/>
+    <circle cx="80" cy="50" r="12" fill="#10b981"/>
+    <text x="80" y="55" text-anchor="middle" font-family="Arial, sans-serif" font-size="8" fill="white">Low</text>
+
+    <!-- Leaf nodes for condition -->
+    <line x1="15" y1="60" x2="5" y2="70" stroke="#047857" stroke-width="1"/>
+    <circle cx="5" cy="75" r="8" fill="#a7f3d0"/>
+    <text x="5" y="78" text-anchor="middle" font-family="Arial, sans-serif" font-size="6" fill="#047857">Sales</text>
+
+    <line x1="25" y1="60" x2="35" y2="70" stroke="#047857" stroke-width="1"/>
+    <circle cx="35" cy="75" r="8" fill="#a7f3d0"/>
+    <text x="35" y="78" text-anchor="middle" font-family="Arial, sans-serif" font-size="6" fill="#047857">1000</text>
+  </g>
+
+  <!-- Arrow 3 -->
+  <path d="M 870 210 L 870 250" stroke="#4b5563" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+  <text x="885" y="235" font-family="Arial, sans-serif" font-size="10" fill="#4b5563">Convert</text>
+
+  <!-- Step 4: LookML Output -->
+  <rect x="730" y="260" width="280" height="160" rx="10" fill="#fce7f3" stroke="#ec4899" stroke-width="2"/>
+  <text x="870" y="285" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#be185d">
+    Step 4: LookML Output
+  </text>
+
+  <text x="740" y="310" font-family="Monaco, monospace" font-size="11" fill="#be185d">
+    dimension: sales_category {
+  </text>
+  <text x="750" y="330" font-family="Monaco, monospace" font-size="11" fill="#be185d">
+    type: string
+  </text>
+  <text x="750" y="350" font-family="Monaco, monospace" font-size="11" fill="#be185d">
+    sql: CASE WHEN
+  </text>
+  <text x="760" y="370" font-family="Monaco, monospace" font-size="11" fill="#be185d">
+    ${TABLE}.sales > 1000
+  </text>
+  <text x="760" y="390" font-family="Monaco, monospace" font-size="11" fill="#be185d">
+    THEN 'High' ELSE 'Low' END ;;
+  </text>
+  <text x="740" y="410" font-family="Monaco, monospace" font-size="11" fill="#be185d">
+    }
+  </text>
+
+  <!-- Plugin Architecture Section -->
+  <rect x="50" y="260" width="620" height="200" rx="10" fill="#f3f4f6" stroke="#6b7280" stroke-width="2"/>
+  <text x="360" y="285" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#374151">
+    Plugin Architecture Integration
+  </text>
+
+  <!-- Plugin boxes -->
+  <rect x="70" y="300" width="130" height="60" rx="5" fill="#e0e7ff" stroke="#6366f1" stroke-width="1"/>
+  <text x="135" y="320" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#4338ca">
+    Connection
+  </text>
+  <text x="135" y="335" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#4338ca">
+    Handler
+  </text>
+  <text x="135" y="350" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#4338ca">
+    Plugin
+  </text>
+
+  <rect x="220" y="300" width="130" height="60" rx="5" fill="#e0e7ff" stroke="#6366f1" stroke-width="1"/>
+  <text x="285" y="320" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#4338ca">
+    Dimension
+  </text>
+  <text x="285" y="335" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#4338ca">
+    Handler
+  </text>
+  <text x="285" y="350" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#4338ca">
+    Plugin
+  </text>
+
+  <rect x="370" y="300" width="130" height="60" rx="5" fill="#e0e7ff" stroke="#6366f1" stroke-width="1"/>
+  <text x="435" y="320" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#4338ca">
+    Measure
+  </text>
+  <text x="435" y="335" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#4338ca">
+    Handler
+  </text>
+  <text x="435" y="350" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#4338ca">
+    Plugin
+  </text>
+
+  <!-- NEW: Calculated Field Plugin -->
+  <rect x="520" y="300" width="130" height="60" rx="5" fill="#fecaca" stroke="#dc2626" stroke-width="2"/>
+  <text x="585" y="315" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#dc2626">
+    Calculated Field
+  </text>
+  <text x="585" y="330" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#dc2626">
+    Plugin
+  </text>
+  <text x="585" y="345" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#dc2626">
+    (NEW - AST Based)
+  </text>
+
+  <!-- Components inside Calculated Field Plugin -->
+  <rect x="70" y="380" width="580" height="70" rx="5" fill="#fff7ed" stroke="#ea580c" stroke-width="1"/>
+  <text x="360" y="400" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#c2410c">
+    AST Components
+  </text>
+
+  <rect x="90" y="410" width="100" height="30" rx="3" fill="#fed7aa" stroke="#ea580c" stroke-width="1"/>
+  <text x="140" y="430" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#c2410c">Tokenizer</text>
+
+  <rect x="210" y="410" width="100" height="30" rx="3" fill="#fed7aa" stroke="#ea580c" stroke-width="1"/>
+  <text x="260" y="430" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#c2410c">Parser</text>
+
+  <rect x="330" y="410" width="100" height="30" rx="3" fill="#fed7aa" stroke="#ea580c" stroke-width="1"/>
+  <text x="380" y="430" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#c2410c">AST Converter</text>
+
+  <rect x="450" y="410" width="120" height="30" rx="3" fill="#fed7aa" stroke="#ea580c" stroke-width="1"/>
+  <text x="510" y="430" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#c2410c">LookML Generator</text>
+
+  <!-- Key Benefits -->
+  <rect x="50" y="480" width="960" height="100" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+  <text x="530" y="505" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#047857">
+    Key Benefits
+  </text>
+
+  <!-- Benefit columns -->
+  <g transform="translate(80, 520)">
+    <text x="0" y="0" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#047857">🎯 High Accuracy</text>
+    <text x="0" y="18" font-family="Arial, sans-serif" font-size="10" fill="#047857">85-90% automated conversion</text>
+    <text x="0" y="32" font-family="Arial, sans-serif" font-size="10" fill="#047857">Deterministic results</text>
+  </g>
+
+  <g transform="translate(280, 520)">
+    <text x="0" y="0" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#047857">⚡ Performance</text>
+    <text x="0" y="18" font-family="Arial, sans-serif" font-size="10" fill="#047857">Sub-second processing</text>
+    <text x="0" y="32" font-family="Arial, sans-serif" font-size="10" fill="#047857">Scales to 1000s of fields</text>
+  </g>
+
+  <g transform="translate(480, 520)">
+    <text x="0" y="0" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#047857">🔧 Maintainable</text>
+    <text x="0" y="18" font-family="Arial, sans-serif" font-size="10" fill="#047857">Type-safe with Pydantic</text>
+    <text x="0" y="32" font-family="Arial, sans-serif" font-size="10" fill="#047857">Clear error messages</text>
+  </g>
+
+  <g transform="translate(680, 520)">
+    <text x="0" y="0" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#047857">📈 Extensible</text>
+    <text x="0" y="18" font-family="Arial, sans-serif" font-size="10" fill="#047857">Easy to add new functions</text>
+    <text x="0" y="32" font-family="Arial, sans-serif" font-size="10" fill="#047857">Plugin architecture</text>
+  </g>
+
+  <!-- Success Rate indicator -->
+  <rect x="50" y="600" width="960" height="40" rx="5" fill="#ddd6fe" stroke="#7c3aed" stroke-width="1"/>
+  <text x="530" y="625" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#5b21b6">
+    Expected Success Rate: 85-90% Automated Conversion | 10-15% Manual Review
+  </text>
+  <!-- Arrow marker definition -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4b5563"/>
+    </marker>
+  </defs>
+</svg>

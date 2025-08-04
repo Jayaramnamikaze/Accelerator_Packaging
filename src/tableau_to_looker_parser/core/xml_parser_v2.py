@@ -239,10 +239,16 @@ class TableauXMLParserV2:
                 "sql_column": remote_alias_elem.text
                 if remote_alias_elem is not None
                 else remote_name_elem.text,
-                # Label from remote-alias (for LookML label field)
-                "label": remote_alias_elem.text
-                if remote_alias_elem is not None
-                else remote_name_elem.text,
+                # User-friendly label (unified logic)
+                "label": self._get_user_friendly_label(
+                    caption=None,
+                    local_name=local_name_elem.text
+                    if local_name_elem is not None
+                    else None,
+                    remote_alias=remote_alias_elem.text
+                    if remote_alias_elem is not None
+                    else None,
+                ),
                 # Type classification (KEY IMPROVEMENT)
                 "field_type": "measure" if is_measure else "dimension",
                 "role": "measure" if is_measure else "dimension",
@@ -299,6 +305,7 @@ class TableauXMLParserV2:
                 "number_format": col.get("number-format"),
                 "aggregation": col.get("aggregation"),
                 "source": "column_element",
+                "is_internal": self._is_internal_field(col),
             }
 
             # Check for calculations (CALCULATED FIELDS)
@@ -443,6 +450,56 @@ class TableauXMLParserV2:
         self.logger.info(f"Merged {len(enhanced_fields)} enhanced field definitions")
         return enhanced_fields
 
+    def _is_internal_field(self, col_element: Element) -> bool:
+        """Detect internal Tableau fields generically.
+
+        Args:
+            col_element: Column XML element
+
+        Returns:
+            bool: True if field is internal/system-generated
+        """
+        internal_indicators = [
+            col_element.get("is-adhoc-cluster") == "true",
+            col_element.get("parent-model") is not None,
+            col_element.get("auto-hidden") == "true",
+            col_element.get("hidden") == "true"
+            and col_element.get("system-generated") == "true",
+        ]
+        return any(internal_indicators)
+
+    def _get_user_friendly_label(
+        self,
+        caption: Optional[str],
+        local_name: Optional[str],
+        remote_alias: Optional[str],
+    ) -> str:
+        """Get user-friendly label for fields in consistent priority order.
+
+        Args:
+            caption: User-set field caption from Tableau
+            local_name: Tableau local name like "[Order ID]"
+            remote_alias: Database column name like "Order_ID"
+
+        Returns:
+            str: User-friendly label for LookML
+        """
+        # Priority 1: Caption (user-set name in Tableau)
+        if caption and caption.strip():
+            return caption.strip()
+
+        # Priority 2: Local name cleaned up (remove brackets, convert underscores to spaces)
+        if local_name and local_name.strip():
+            cleaned = local_name.strip("[]").replace("_", " ")
+            return cleaned
+
+        # Priority 3: Remote alias as fallback
+        if remote_alias and remote_alias.strip():
+            # Convert database column name to readable format
+            return remote_alias.replace("_", " ")
+
+        return "Unknown Field"
+
     def _build_enhanced_table_mapping(
         self, datasource: Element, enhanced_fields: Dict[str, Dict]
     ) -> Dict[str, str]:
@@ -568,9 +625,11 @@ class TableauXMLParserV2:
                     "semantic_role": field_def.get("semantic_role"),
                     "folder": field_def.get("folder"),
                     "description": field_def.get("description"),
-                    "label": field_def.get("label")  # Preserve remote-alias label
-                    or field_def.get("caption")
-                    or field_def["local_name"],  # User-friendly label
+                    "label": self._get_user_friendly_label(
+                        caption=field_def.get("caption"),
+                        local_name=field_def["local_name"],
+                        remote_alias=field_def.get("label"),
+                    ),
                 }
 
                 elements.append({"type": field_type, "data": element_data})
@@ -587,7 +646,11 @@ class TableauXMLParserV2:
                     "caption": field_def.get("caption"),
                     "aggregation": field_def.get("aggregation"),
                     "number_format": field_def.get("number_format"),
-                    "label": field_def.get("label") or field_def.get("caption"),
+                    "label": self._get_user_friendly_label(
+                        caption=field_def.get("caption"),
+                        local_name=field_def["local_name"],
+                        remote_alias=field_def.get("label"),
+                    ),
                 }
 
                 elements.append({"type": "calculated_field", "data": element_data})
@@ -605,7 +668,11 @@ class TableauXMLParserV2:
                     "default_value": field_def.get("default_value"),
                     "caption": field_def.get("caption"),
                     "description": field_def.get("description"),
-                    "label": field_def.get("label") or field_def.get("caption"),
+                    "label": self._get_user_friendly_label(
+                        caption=field_def.get("caption"),
+                        local_name=field_def["local_name"],
+                        remote_alias=field_def.get("label"),
+                    ),
                 }
 
                 elements.append({"type": "parameter", "data": element_data})
@@ -1102,22 +1169,28 @@ class TableauXMLParserV2:
         pane = worksheet.find(".//pane")
         if pane is None:
             return {
-                "chart_type": "unknown",
+                "chart_type": "automatic",
                 "x_axis": [],
                 "y_axis": [],
                 "color": None,
                 "size": None,
                 "detail": [],
                 "tooltip": [],
+                "raw_config": {"chart_type": "automatic"},
             }
 
-        # Extract mark type (chart type)
+        # Extract mark type (chart type) - RAW DATA ONLY
         mark = pane.find("mark")
-        chart_type = mark.get("class", "bar").lower() if mark is not None else "bar"
+        chart_type = (
+            mark.get("class", "automatic").lower() if mark is not None else "automatic"
+        )
+
+        # Extract encodings - RAW DATA ONLY
+        encodings_info = self._extract_pane_encodings(pane)
 
         # Extract field mappings
         viz_config = {
-            "chart_type": chart_type,
+            "chart_type": chart_type,  # Raw chart type from XML
             "x_axis": self._extract_shelf_fields(worksheet, "cols"),
             "y_axis": self._extract_shelf_fields(worksheet, "rows"),
             "color": None,
@@ -1127,9 +1200,14 @@ class TableauXMLParserV2:
             "is_dual_axis": self._has_dual_axis(worksheet),
             "show_labels": self._extract_show_labels(pane),
             "show_totals": self._extract_show_totals(worksheet),
+            "raw_config": {
+                "chart_type": chart_type,
+                "mark_class": chart_type,
+                "encodings": encodings_info,  # Raw encoding data for handler
+            },
         }
 
-        # Extract encodings
+        # Extract encodings for backwards compatibility
         encodings = pane.find("encodings")
         if encodings is not None:
             for encoding in encodings:
@@ -1144,6 +1222,32 @@ class TableauXMLParserV2:
                     viz_config["detail"].append(column)
 
         return viz_config
+
+    def _extract_pane_encodings(self, pane: Element) -> Dict:
+        """Extract raw encoding information from pane."""
+        encodings_info = {
+            "text_columns": [],
+            "color_columns": [],
+            "size_columns": [],
+            "detail_columns": [],
+        }
+
+        encodings = pane.find("encodings")
+        if encodings is not None:
+            for encoding in encodings:
+                encoding_type = encoding.tag
+                column = encoding.get("column", "")
+
+                if encoding_type == "text":
+                    encodings_info["text_columns"].append(column)
+                elif encoding_type == "color":
+                    encodings_info["color_columns"].append(column)
+                elif encoding_type == "size":
+                    encodings_info["size_columns"].append(column)
+                elif encoding_type == "detail":
+                    encodings_info["detail_columns"].append(column)
+
+        return encodings_info
 
     def _extract_shelf_fields(self, worksheet: Element, shelf_name: str) -> List[str]:
         """Extract field names from a specific shelf (rows/cols)."""

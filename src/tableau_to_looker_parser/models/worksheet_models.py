@@ -22,6 +22,7 @@ class ChartType(str, Enum):
     SCATTER = "scatter"
     MAP = "map"
     TEXT = "text"
+    TEXT_TABLE = "text_table"  # Crosstab/pivot table
     AREA = "area"
     GANTT = "gantt"
     HEATMAP = "heatmap"
@@ -118,6 +119,11 @@ class VisualizationConfig(BaseModel):
     )
     sort_fields: List[Dict[str, str]] = Field(
         default_factory=list, description="Sort configuration"
+    )
+
+    # Enhanced detection metadata
+    enhanced_detection: Optional[Dict[str, Any]] = Field(
+        None, description="Enhanced chart type detection metadata"
     )
 
     # Raw Tableau configuration for unknown properties

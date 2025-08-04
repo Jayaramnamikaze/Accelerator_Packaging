@@ -123,21 +123,27 @@ class ViewGenerator(BaseGenerator):
 
         actual_table_name = actual_table["name"]
 
-        # Filter dimensions and measures for this specific table
+        # Filter dimensions and measures for this specific table, excluding internal fields
         table_dimensions = [
-            dim for dim in all_dimensions if dim.get("table_name") == actual_table_name
+            dim
+            for dim in all_dimensions
+            if dim.get("table_name") == actual_table_name
+            and not dim.get("is_internal", False)
         ]
         table_measures = [
             measure
             for measure in all_measures
             if measure.get("table_name") == actual_table_name
+            and not measure.get("is_internal", False)
         ]
 
-        # Filter calculated fields for this specific table and convert AST to LookML
+        # Filter calculated fields for this specific table and convert AST to LookML, excluding internal fields
         table_calculated_fields = []
         table_calculated_dimensions = []  # For two-step pattern dimensions
         for calc_field in all_calculated_fields:
-            if calc_field.get("table_name") == actual_table_name:
+            if calc_field.get("table_name") == actual_table_name and not calc_field.get(
+                "is_internal", False
+            ):
                 # Convert AST to LookML SQL using our converter
                 converted_field = self._convert_calculated_field(calc_field, view_name)
                 if converted_field:

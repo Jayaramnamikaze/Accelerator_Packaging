@@ -1,34 +1,41 @@
 ---
 - dashboard: {{ dashboard_name | clean_name }}
-  title: {{ title }}
+  title: "{{ title }}"
   layout: {{ layout_type }}
-  {% if preferred_viewer %}
-  preferred_viewer: {{ preferred_viewer }}
+  {% if preferred_viewer %}preferred_viewer: {{ preferred_viewer }}{% endif %}
+  {% if description %}description: "{{ description }}"{% endif %}
+  {% if preferred_slug %}preferred_slug: "{{ preferred_slug }}"{% endif %}
+
+  {% if filters %}
+  filters:
+  {% for filter in filters %}
+  - name: {{ filter.name }}
+    title: "{{ filter.title }}"
+    type: {{ filter.type }}
+    {% if filter.default_value is defined %}default_value: "{{ filter.default_value }}"{% endif %}
+    {% if filter.allow_multiple_values is defined %}allow_multiple_values: {{ filter.allow_multiple_values | lower }}{% endif %}
+    {% if filter.required is defined %}required: {{ filter.required | lower }}{% endif %}
+    {% if filter.model %}model: {{ filter.model }}{% endif %}
+    {% if filter.explore %}explore: {{ filter.explore | clean_name }}{% endif %}
+    {% if filter.field %}field: {{ filter.field }}{% endif %}
+  {% endfor %}
   {% endif %}
-  {% if description %}
-  description: {{ description }}
-  {% endif %}
-  {% if preferred_slug %}
-  preferred_slug: {{ preferred_slug }}
-  {% endif %}
+
   elements:
   {% for element in elements %}
-  - title: {{ element.title }}
-    name: {{ element.name | clean_name }}
-    {% if element.model %}
-    model: {{ element.model }}
-    {% endif %}
-    {% if element.explore %}
-    explore: {{ element.explore | clean_name }}
-    {% endif %}
+  - name: {{ element.name | clean_name }}
+    title: "{{ element.title }}"
     type: {{ element.type }}
+    {% if element.model and element.explore %}
+    model: {{ element.model }}
+    explore: {{ element.explore | clean_name }}
     {% if element.fields %}
     fields: [{{ element.fields | join(', ') }}]
     {% endif %}
     {% if element.filters %}
     filters:
       {% for filter_key, filter_value in element.filters.items() %}
-      {{ filter_key }}: {{ filter_value }}
+      {{ filter_key }}: "{{ filter_value }}"
       {% endfor %}
     {% endif %}
     {% if element.sorts %}
@@ -40,99 +47,41 @@
     {% if element.column_limit %}
     column_limit: {{ element.column_limit }}
     {% endif %}
-    {% if element.fill_fields %}
-    fill_fields: [{{ element.fill_fields | map('clean_name') | join(', ') }}]
     {% endif %}
-    {% if element.pivots %}
-    pivots: [{{ element.pivots | map('clean_name') | join(', ') }}]
+    {% if element.y_axes %}
+    y_axes: {{ element.y_axes | tojson }}
     {% endif %}
-    {% if element.dynamic_fields %}
-    dynamic_fields: [
-      {% for dynamic_field in element.dynamic_fields %}
-      {
-        {% for key, value in dynamic_field.items() %}
-        {{ key }}: {{ value }}
-        {% endfor %}
-      }
+    {% if element.x_axis_gridlines is defined %}
+    x_axis_gridlines: {{ element.x_axis_gridlines | lower }}
+    {% endif %}
+    {% if element.y_axis_gridlines is defined %}
+    y_axis_gridlines: {{ element.y_axis_gridlines | lower }}
+    {% endif %}
+    {% if element.show_y_axis_labels is defined %}
+    show_y_axis_labels: {{ element.show_y_axis_labels | lower }}
+    {% endif %}
+    {% if element.show_y_axis_ticks is defined %}
+    show_y_axis_ticks: {{ element.show_y_axis_ticks | lower }}
+    {% endif %}
+    {% if element.y_axis_combined is defined %}
+    y_axis_combined: {{ element.y_axis_combined | lower }}
+    {% endif %}
+    {% if element.series_colors %}
+    series_colors:
+      {% for field, color in element.series_colors.items() %}
+      {{ field }}: "{{ color }}"
       {% endfor %}
-    ]
     {% endif %}
-
-    # Visualization Options
-    {% if element.viz_options %}
-    {% for viz_key, viz_value in element.viz_options.items() %}
-    {% if viz_value is string %}
-    {{ viz_key }}: {{ viz_value }}
-    {% elif viz_value is boolean %}
-    {{ viz_key }}: {{ viz_value | lower }}
-    {% elif viz_value is number %}
-    {{ viz_key }}: {{ viz_value }}
-    {% elif viz_value is mapping %}
-    {{ viz_key }}:
-      {% for nested_key, nested_value in viz_value.items() %}
-      {% if nested_value is string %}
-      {{ nested_key }}: {{ nested_value }}
-      {% elif nested_value is boolean %}
-      {{ nested_key }}: {{ nested_value | lower }}
-      {% else %}
-      {{ nested_key }}: {{ nested_value }}
-      {% endif %}
-      {% endfor %}
-    {% elif viz_value is iterable and viz_value is not string %}
-    {{ viz_key }}:
-      {% for item in viz_value %}
-      {% if item is mapping %}
-      - {% for item_key, item_value in item.items() %}
-        {{ item_key }}: {{ item_value }}
-        {% endfor %}
-      {% else %}
-      - {{ item }}
-      {% endif %}
-      {% endfor %}
-    {% else %}
-    {{ viz_key }}: {{ viz_value }}
-    {% endif %}
-    {% endfor %}
-    {% endif %}
-
-    # Listen Configuration (Filter Connections)
     {% if element.listen %}
     listen:
       {% for listen_key, listen_value in element.listen.items() %}
       {{ listen_key }}: {{ listen_value }}
       {% endfor %}
     {% endif %}
-
-    # Layout Position
+    {% if element.layout %}
     row: {{ element.layout.row }}
     col: {{ element.layout.col }}
     width: {{ element.layout.width }}
     height: {{ element.layout.height }}
-  {% endfor %}
-
-  # Dashboard Filters
-  {% if filters %}
-  filters:
-  {% for filter in filters %}
-  - name: {{ filter.name }}
-    title: {{ filter.title }}
-    type: {{ filter.type }}
-    {% if filter.default_value is defined %}default_value: {{ filter.default_value }}{% endif %}
-    {% if filter.allow_multiple_values is defined %}allow_multiple_values: {{ filter.allow_multiple_values | lower }}{% endif %}
-    {% if filter.required is defined %}required: {{ filter.required | lower }}{% endif %}
-    {% if filter.ui_config %}
-    ui_config:
-      {% for ui_key, ui_value in filter.ui_config.items() %}
-      {% if ui_value is iterable and ui_value is not string %}
-      {{ ui_key }}: [{{ ui_value | join(', ') }}]
-      {% else %}
-      {{ ui_key }}: {{ ui_value }}
-      {% endif %}
-      {% endfor %}
     {% endif %}
-    {% if filter.model %}model: {{ filter.model }}{% endif %}
-    {% if filter.explore %}explore: {{ filter.explore | clean_name }}{% endif %}
-    {% if filter.listens_to_filters %}listens_to_filters: [{{ filter.listens_to_filters | join(', ') }}]{% endif %}
-    {% if filter.field %}field: {{ filter.field }}{% endif %}
   {% endfor %}
-  {% endif %}

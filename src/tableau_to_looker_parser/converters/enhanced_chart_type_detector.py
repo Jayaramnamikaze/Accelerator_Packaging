@@ -236,7 +236,7 @@ class EnhancedChartTypeDetector:
 
         # Check against known real-world patterns
         for pattern_name, pattern_config in self.field_patterns.items():
-            if self._matches_field_pattern(placement, pattern_config):
+            if self._matches_field_pattern(placement, pattern_config, worksheet_data):
                 return {
                     "chart_type": pattern_config["chart_type"],
                     "confidence": pattern_config["confidence"],
@@ -302,18 +302,18 @@ class EnhancedChartTypeDetector:
         Tier 4: Detect chart type from Tableau mark class information.
 
         Uses the visualization config from XMLParser to map Tableau marks
-        to chart types. Less reliable than field placement but still valuable.
+        to chart types. Enhanced with automatic mark detection.
         """
         viz_config = worksheet_data.get("visualization", {})
         current_chart_type = viz_config.get("chart_type", "unknown")
 
+        # Handle automatic marks with encoding analysis
+        if current_chart_type == "automatic":
+            return self._detect_automatic_chart_type(worksheet_data)
+
         # Handle dual-axis from visualization config
         if viz_config.get("is_dual_axis", False):
-            # Try to extract dual-axis info from raw config
-            # raw_config = viz_config.get("raw_config", {})
-
             if current_chart_type in self.tableau_mark_mapping:
-                # This is likely the primary mark, but we don't have secondary
                 return {
                     "chart_type": current_chart_type,
                     "confidence": 0.70,
@@ -334,6 +334,52 @@ class EnhancedChartTypeDetector:
                 }
 
         return None
+
+    def _detect_automatic_chart_type(self, worksheet_data: Dict) -> Optional[Dict]:
+        """Detect chart type for automatic marks using encodings and field placement."""
+        viz_config = worksheet_data.get("visualization", {})
+        raw_config = viz_config.get("raw_config", {})
+        encodings = raw_config.get("encodings", {})
+
+        text_columns = encodings.get("text_columns", [])
+        x_axis = viz_config.get("x_axis", [])
+
+        # Table detection pattern:
+        # Automatic mark + text encoding with Multiple Values + Measure Names on columns
+        if any("Multiple Values" in col for col in text_columns) and any(
+            ":Measure Names" in col for col in x_axis
+        ):
+            return {
+                "chart_type": ChartType.TEXT_TABLE.value,
+                "confidence": 0.85,
+                "method": DetectionMethod.TABLEAU_MARK,
+                "reasoning": "Automatic mark with table pattern: Multiple Values text + Measure Names on columns",
+                "detection_pattern": "table_with_measure_names",
+            }
+
+        # Bar chart detection pattern:
+        # Automatic mark + single measure text encoding + no Measure Names
+        elif (
+            len(text_columns) > 0
+            and not any("Multiple Values" in col for col in text_columns)
+            and not any(":Measure Names" in col for col in x_axis)
+        ):
+            return {
+                "chart_type": ChartType.BAR.value,
+                "confidence": 0.75,
+                "method": DetectionMethod.TABLEAU_MARK,
+                "reasoning": "Automatic mark with bar pattern: Single measure text + dimensions on columns",
+                "detection_pattern": "bar_with_labels",
+            }
+
+        # Default fallback for automatic marks
+        return {
+            "chart_type": ChartType.BAR.value,
+            "confidence": 0.50,
+            "method": DetectionMethod.TABLEAU_MARK,
+            "reasoning": "Automatic mark with default fallback to bar chart",
+            "detection_pattern": "automatic_fallback",
+        }
 
     def _detect_default_fallback(self, worksheet_data: Dict) -> Dict:
         """
@@ -384,7 +430,7 @@ class EnhancedChartTypeDetector:
         }
 
     def _initialize_field_patterns(self) -> Dict[str, Dict]:
-        """Initialize real-world field placement patterns."""
+        """Initialize field placement patterns based on Tableau Desktop logic."""
         return {
             "vertical_bar_standard": {
                 "chart_type": ChartType.BAR.value,
@@ -419,6 +465,14 @@ class EnhancedChartTypeDetector:
                 "columns_measures": 1,
                 "description": "Scatter plot: measure vs measure correlation",
             },
+            # Tableau Desktop logic: Measure Names on columns = crosstab/pivot table
+            "tableau_crosstab_table": {
+                "chart_type": ChartType.TEXT_TABLE.value,
+                "confidence": 0.95,
+                "has_measure_names_on_columns": True,
+                "has_dimensions_on_rows": True,
+                "description": "Tableau crosstab: Measure Names on columns creates pivot table structure",
+            },
         }
 
     def _analyze_field_placement(self, fields: List[Dict]) -> Dict:
@@ -446,8 +500,10 @@ class EnhancedChartTypeDetector:
 
         return placement
 
-    def _matches_field_pattern(self, placement: Dict, pattern: Dict) -> bool:
-        """Check if field placement matches a specific pattern."""
+    def _matches_field_pattern(
+        self, placement: Dict, pattern: Dict, worksheet_data: Dict = None
+    ) -> bool:
+        """Check if field placement matches a specific pattern using Tableau Desktop logic."""
         # Check dimension/measure counts on rows
         if "rows_dimensions" in pattern:
             if len(placement["rows"]["dimensions"]) != pattern["rows_dimensions"]:
@@ -477,13 +533,49 @@ class EnhancedChartTypeDetector:
             if not placement["columns"].get("dates", []):
                 return False
 
+        # Tableau Desktop-style crosstab detection
+        if pattern.get("has_measure_names_on_columns", False) and worksheet_data:
+            viz = worksheet_data.get("visualization", {})
+            x_axis = viz.get("x_axis", [])
+            # Check if Measure Names is on columns (x-axis)
+            if not any(":Measure Names" in str(col) for col in x_axis):
+                return False
+
+        if pattern.get("has_dimensions_on_rows", False):
+            # Check if there are dimensions on rows (y-axis)
+            if len(placement["rows"]["dimensions"]) == 0:
+                return False
+
+        # Legacy table-specific pattern checks for backward compatibility
+        if worksheet_data and pattern.get("automatic_mark", False):
+            viz = worksheet_data.get("visualization", {})
+            raw_config = viz.get("raw_config", {})
+
+            # Check for automatic mark
+            if raw_config.get("chart_type") != "automatic":
+                return False
+
+            # Check for Multiple Values in text encoding
+            if pattern.get("text_multiple_values", False):
+                encodings = raw_config.get("encodings", {})
+                text_columns = encodings.get("text_columns", [])
+                if not any("Multiple Values" in col for col in text_columns):
+                    return False
+
+            # Check for Measure Names on columns
+            if pattern.get("measure_names_on_columns", False):
+                x_axis = viz.get("x_axis", [])
+                if not any(":Measure Names" in col for col in x_axis):
+                    return False
+
         return True
 
     def _has_time_series_pattern(self, fields: List[Dict]) -> bool:
         """Check for time series analysis pattern."""
-        has_date = any(f["datatype"] in ["date", "datetime"] for f in fields)
+        has_date = any(f.get("datatype") in ["date", "datetime"] for f in fields)
         has_measure_on_trend_shelf = any(
-            f["role"] == "measure" and f["shelf"] in ["rows", "columns"] for f in fields
+            f.get("role") == "measure" and f.get("shelf") in ["rows", "columns"]
+            for f in fields
         )
         return has_date and has_measure_on_trend_shelf
 
@@ -492,14 +584,14 @@ class EnhancedChartTypeDetector:
         axis_measures = [
             f
             for f in fields
-            if f["role"] == "measure" and f["shelf"] in ["rows", "columns"]
+            if f.get("role") == "measure" and f.get("shelf") in ["rows", "columns"]
         ]
         return len(axis_measures) >= 2
 
     def _has_comparison_pattern(self, fields: List[Dict]) -> bool:
         """Check for categorical comparison pattern."""
-        dimensions = [f for f in fields if f["role"] == "dimension"]
-        measures = [f for f in fields if f["role"] == "measure"]
+        dimensions = [f for f in fields if f.get("role") == "dimension"]
+        measures = [f for f in fields if f.get("role") == "measure"]
         return len(dimensions) >= 1 and len(measures) >= 1
 
     def _has_grouping_by_color(self, worksheet_data: Dict) -> bool:
