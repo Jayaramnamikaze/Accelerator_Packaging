@@ -102,6 +102,8 @@ class BaseHandler:
 #### **MeasureHandler** (`handlers/measure_handler.py`)
 - **Supports**: SUM, COUNT, AVG, MIN, MAX aggregations
 - **Features**: Value formatting, drill-down capabilities
+- **✅ Enhanced**: Two-step pattern generation (hidden dimension + measure)
+- **✅ Multi-Aggregation**: Generates multiple measures per field (total_sales, avg_sales, count_quantity)
 
 #### **CalculatedFieldHandler** (`handlers/calculated_field_handler.py`)
 - **Coverage**: 48/150 Tableau functions (32% coverage)
@@ -114,6 +116,8 @@ class BaseHandler:
 - **Processes**: Tableau worksheet elements
 - **Features**: Field usage extraction, chart type detection, visualization config
 - **Integration**: Enhanced chart type detector (91.3% confidence)
+- **✅ Multi-Aggregation**: Identifies worksheet-specific field aggregations (AVG, COUNT, etc.)
+- **✅ XML Parsing**: Extracts `<column-instance derivation='Avg'>` for precise aggregation detection
 - **Output**: WorksheetSchema with field references and visualization metadata
 
 #### **DashboardHandler** (`handlers/dashboard_handler.py`)
@@ -224,6 +228,8 @@ def generate_project_files(migration_data, output_dir) -> Dict:
 - **Layout Optimization**: Per layout type (newspaper/grid/free_form)
 - **Chart Type Mapping**: Tableau → Looker chart types
 - **Dual-Axis Support**: Y_axes configuration with series colors
+- **✅ Field Synchronization**: Perfect sync with view measures based on worksheet aggregations
+- **✅ Dynamic Field Mapping**: AVG→avg_sales, SUM→total_sales, COUNT→count_quantity
 - **Template**: dashboard.j2 (YAML format)
 
 #### **ViewGenerator** (`generators/view_generator.py`)
@@ -244,6 +250,68 @@ def generate_project_files(migration_data, output_dir) -> Dict:
 - `basic_view.j2` - View files with dimensions/measures
 - `model.j2` - Model files with explores
 - `dashboard.j2` - Dashboard files (YAML format) ⭐
+
+---
+
+## **🎯 Multi-Aggregation Support Architecture**
+
+### **Problem Solved**
+In Tableau, different worksheets can use different aggregations on the same field:
+- Worksheet A: `SUM(Sales)`
+- Worksheet B: `AVG(Sales)`
+- Worksheet C: `COUNT(Quantity)`
+
+LookML requires separate measures for each aggregation type.
+
+### **Solution Flow**
+```
+XML Parser → WorksheetHandler → MeasureHandler → ViewGenerator
+                ↓                    ↓
+           identifies            generates         ↓
+           AVG(Sales)           avg_sales      view.lkml
+                ↓                    ↓
+           DashboardHandler → DashboardGenerator
+                ↓                    ↓
+           references           orders.avg_sales
+           worksheet fields     (perfect sync!)
+```
+
+### **Key Components**
+
+#### **1. WorksheetHandler Enhancement**
+```python
+def _identify_worksheet_measures(self, fields, datasource_id):
+    # Parses: <column-instance column='[Sales]' derivation='Avg'>
+    # Returns: [{"name": "sales", "aggregation": "avg", ...}]
+```
+
+#### **2. MeasureHandler Routing**
+```python
+# Migration Engine routes identified measures
+for measure_data in worksheet.identified_measures:
+    json_data = measure_handler.convert_to_json(measure_data)
+    # Generates: avg_sales, count_quantity, etc.
+```
+
+#### **3. Dashboard Field Mapping**
+```python
+def _add_measure_aggregation_type(self, field_name, field):
+    if field.aggregation.lower() == "avg":
+        return f"avg_{field_name.lower()}"  # avg_sales
+    elif field.aggregation.lower() == "sum":
+        return f"total_{field_name.lower()}"  # total_sales
+```
+
+### **Results**
+```yaml
+# View File (orders.view.lkml)
+measure: total_sales { type: sum }     # Base SUM measure
+measure: avg_sales { type: average }   # Worksheet-specific AVG
+measure: count_quantity { type: count } # Worksheet-specific COUNT
+
+# Dashboard File
+fields: [orders.avg_sales, orders.category]  # Perfect sync!
+```
 
 ---
 

@@ -1008,6 +1008,113 @@ class TableauXMLParserV2:
         self.logger.info(f"Extracted {len(worksheets)} worksheets")
         return worksheets
 
+    def extract_color_palettes(self, root: Element) -> Dict[str, List[str]]:
+        """Extract all color palettes from Tableau XML.
+
+        Args:
+            root: Root element of the workbook
+
+        Returns:
+            Dictionary mapping palette names to color lists
+        """
+        palettes = {}
+
+        # Extract custom color palettes
+        for palette in root.findall(".//color-palette"):
+            palette_name = palette.get("name")
+            palette_type = palette.get("type", "regular")
+
+            if palette_name:
+                colors = []
+                for color in palette.findall("color"):
+                    if color.text:
+                        colors.append(color.text.strip())
+
+                if colors:
+                    palettes[palette_name] = {
+                        "colors": colors,
+                        "type": palette_type,
+                        "custom": palette.get("custom", "false") == "true",
+                    }
+
+        # Extract default Tableau palette if no custom ones found
+        if not palettes:
+            palettes["default"] = {
+                "colors": [
+                    "#4E79A7",
+                    "#F28E2B",
+                    "#E15759",
+                    "#76B7B2",
+                    "#59A14F",
+                    "#EDC948",
+                    "#B07AA1",
+                    "#FF9DA7",
+                    "#BAB0AC",
+                ],
+                "type": "regular",
+                "custom": False,
+            }
+
+        self.logger.info(f"Extracted {len(palettes)} color palettes")
+        return palettes
+
+    def extract_field_encodings(self, root: Element) -> Dict[str, Dict]:
+        """Extract field encoding information (color, size, etc.) from worksheets.
+
+        Args:
+            root: Root element of the workbook
+
+        Returns:
+            Dictionary mapping worksheet names to their encoding configurations
+        """
+        worksheet_encodings = {}
+
+        for worksheet in root.findall(".//worksheet"):
+            worksheet_name = worksheet.get("name")
+            if not worksheet_name:
+                continue
+
+            encodings = {
+                "color_fields": [],
+                "size_fields": [],
+                "detail_fields": [],
+                "text_fields": [],
+                "color_palettes": [],
+            }
+
+            # Extract from panes
+            for pane in worksheet.findall(".//pane"):
+                pane_encodings = pane.find("encodings")
+                if pane_encodings is not None:
+                    for encoding in pane_encodings:
+                        encoding_type = encoding.tag
+                        field = encoding.get("field", "")
+                        palette = encoding.get("palette", "")
+
+                        if encoding_type == "color":
+                            encodings["color_fields"].append(
+                                {
+                                    "field": field,
+                                    "palette": palette,
+                                    "type": encoding.get("type", ""),
+                                }
+                            )
+                            if palette:
+                                encodings["color_palettes"].append(palette)
+                        elif encoding_type == "size":
+                            encodings["size_fields"].append(field)
+                        elif encoding_type == "detail":
+                            encodings["detail_fields"].append(field)
+                        elif encoding_type == "text":
+                            encodings["text_fields"].append(field)
+
+            worksheet_encodings[worksheet_name] = encodings
+
+        self.logger.info(
+            f"Extracted encodings for {len(worksheet_encodings)} worksheets"
+        )
+        return worksheet_encodings
+
     def extract_dashboards(self, root: Element) -> List[Dict]:
         """Extract all dashboard elements from Tableau XML.
 

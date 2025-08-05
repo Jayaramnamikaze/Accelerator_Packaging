@@ -41,6 +41,9 @@ class ChartType(str, Enum):
     GANTT = "gantt"
     MAP = "map"
 
+    # Connected Devices Dashboard Types
+    DONUT = "donut"
+
     # Dual-axis combinations (high business value)
     BAR_AND_LINE = "bar_and_line"
     BAR_AND_AREA = "bar_and_area"
@@ -127,25 +130,25 @@ class EnhancedChartTypeDetector:
             )
             return result
 
-        # Tier 2: Field placement pattern matching (real-world patterns)
-        result = self._detect_from_field_placement(worksheet_data)
-        if result and result["confidence"] >= self.confidence_thresholds["high"]:
+        # Tier 2: Tableau mark analysis (HIGH PRIORITY - use actual Tableau data!)
+        result = self._detect_from_tableau_marks(worksheet_data)
+        if result and result["confidence"] >= self.confidence_thresholds["low"]:
             self.logger.info(
                 f"Tier 2 detection: {result['chart_type']} (confidence: {result['confidence']:.2f})"
             )
             return result
 
-        # Tier 3: Contextual business analysis
-        result = self._detect_from_context(worksheet_data)
-        if result and result["confidence"] >= self.confidence_thresholds["medium"]:
+        # Tier 3: Field placement pattern matching (real-world patterns)
+        result = self._detect_from_field_placement(worksheet_data)
+        if result and result["confidence"] >= self.confidence_thresholds["high"]:
             self.logger.info(
                 f"Tier 3 detection: {result['chart_type']} (confidence: {result['confidence']:.2f})"
             )
             return result
 
-        # Tier 4: Tableau mark analysis
-        result = self._detect_from_tableau_marks(worksheet_data)
-        if result and result["confidence"] >= self.confidence_thresholds["low"]:
+        # Tier 4: Contextual business analysis
+        result = self._detect_from_context(worksheet_data)
+        if result and result["confidence"] >= self.confidence_thresholds["medium"]:
             self.logger.info(
                 f"Tier 4 detection: {result['chart_type']} (confidence: {result['confidence']:.2f})"
             )
@@ -307,31 +310,72 @@ class EnhancedChartTypeDetector:
         viz_config = worksheet_data.get("visualization", {})
         current_chart_type = viz_config.get("chart_type", "unknown")
 
+        # Convert ChartType enum to string if needed
+        if hasattr(current_chart_type, "value"):
+            current_chart_type = current_chart_type.value
+
+        # Enhanced mapping for Connected Devices patterns
+        connected_devices_mapping = {
+            "scatter": self._detect_connected_devices_scatter(worksheet_data),
+            "bar": self._detect_connected_devices_bar(worksheet_data),
+        }
+
+        # Check Connected Devices specific patterns first
+        if (
+            current_chart_type in connected_devices_mapping
+            and connected_devices_mapping[current_chart_type]
+        ):
+            return connected_devices_mapping[current_chart_type]
+
         # Handle automatic marks with encoding analysis
         if current_chart_type == "automatic":
             return self._detect_automatic_chart_type(worksheet_data)
 
         # Handle dual-axis from visualization config
         if viz_config.get("is_dual_axis", False):
-            if current_chart_type in self.tableau_mark_mapping:
+            # For dual-axis pie charts, likely donut charts (Connected Devices pattern)
+            if current_chart_type == "pie":  # Dual-axis pie = donut
                 return {
-                    "chart_type": current_chart_type,
-                    "confidence": 0.70,
+                    "chart_type": ChartType.DONUT.value,
+                    "confidence": 0.85,
                     "method": DetectionMethod.TABLEAU_MARK,
                     "is_dual_axis": True,
-                    "reasoning": f"Dual-axis chart with primary mark: {current_chart_type}",
+                    "reasoning": "Dual-axis pie chart = donut chart (Connected Devices pattern)",
+                }
+            elif (
+                current_chart_type == "bar"
+            ):  # Some pie charts might show as bar in dual-axis
+                return {
+                    "chart_type": ChartType.DONUT.value,
+                    "confidence": 0.85,
+                    "method": DetectionMethod.TABLEAU_MARK,
+                    "is_dual_axis": True,
+                    "reasoning": f"Dual-axis bar pattern suggests donut chart (original: {current_chart_type})",
                 }
 
-        # Single mark type mapping
-        if current_chart_type in self.tableau_mark_mapping:
-            mapped_type = self.tableau_mark_mapping[current_chart_type]
-            if mapped_type:
-                return {
-                    "chart_type": mapped_type.value,
-                    "confidence": 0.65,
-                    "method": DetectionMethod.TABLEAU_MARK,
-                    "reasoning": f"Mapped from Tableau mark class: {current_chart_type}",
-                }
+        # Standard mark mapping
+        tableau_mark_strings = {
+            "bar": ChartType.BAR,
+            "line": ChartType.LINE,
+            "area": ChartType.AREA,
+            "scatter": ChartType.SCATTER,
+            "pie": ChartType.PIE,
+            "donut": ChartType.DONUT,  # Handle donut directly
+            "grouped_bar": ChartType.GROUPED_BAR,  # Handle grouped bar directly
+            "square": ChartType.HEATMAP,
+            "text": ChartType.TEXT_TABLE,
+            "gantt": ChartType.GANTT,
+            "map": ChartType.MAP,
+        }
+
+        if current_chart_type.lower() in tableau_mark_strings:
+            mapped_type = tableau_mark_strings[current_chart_type.lower()]
+            return {
+                "chart_type": mapped_type.value,
+                "confidence": 0.85,  # Higher confidence for direct mapping
+                "method": DetectionMethod.TABLEAU_MARK,
+                "reasoning": f"Direct mapping from Tableau chart type: {current_chart_type}",
+            }
 
         return None
 
@@ -465,6 +509,34 @@ class EnhancedChartTypeDetector:
                 "columns_measures": 1,
                 "description": "Scatter plot: measure vs measure correlation",
             },
+            # Connected Devices Dashboard Patterns - Based on Real Tableau Desktop Usage
+            "connected_devices_heatmap": {
+                "chart_type": ChartType.HEATMAP.value,
+                "confidence": 0.95,
+                "tableau_mark": "Square",
+                "rows_dimensions": 1,  # EQP_GRP_DESC on rows
+                "columns_date_fields": 2,  # RPT_DT / RPT_TIME on columns
+                "has_color_encoding": True,
+                "has_text_encoding": True,
+                "description": "Heatmap: Square mark + dimension on rows + date/time on columns + color encoding",
+            },
+            "connected_devices_time_bar": {
+                "chart_type": ChartType.BAR.value,
+                "confidence": 0.93,
+                "tableau_mark": "Bar",
+                "rows_measures": 1,  # sales on rows
+                "columns_date_fields": 2,  # RPT_DT / RPT_TIME on columns
+                "description": "Time-based bar: Bar mark + measure on rows + date/time on columns",
+            },
+            "connected_devices_donut": {
+                "chart_type": ChartType.DONUT.value,
+                "confidence": 0.92,
+                "tableau_mark": "Pie",
+                "rows_dual_measures": True,  # Dual calculation for donut hole
+                "columns_empty": True,
+                "has_color_dimension": True,
+                "description": "Donut chart: Pie mark + dual measures on rows + dimension on color",
+            },
             # Tableau Desktop logic: Measure Names on columns = crosstab/pivot table
             "tableau_crosstab_table": {
                 "chart_type": ChartType.TEXT_TABLE.value,
@@ -568,7 +640,109 @@ class EnhancedChartTypeDetector:
                 if not any(":Measure Names" in col for col in x_axis):
                     return False
 
+        # Connected Devices Dashboard Pattern Checks
+        if worksheet_data and pattern.get("tableau_mark"):
+            viz = worksheet_data.get("visualization", {})
+            current_chart_type = viz.get("chart_type", "unknown")
+            if current_chart_type.lower() != pattern["tableau_mark"].lower():
+                return False
+
+        # Check for date fields on columns (specific count)
+        if pattern.get("columns_date_fields"):
+            date_count = len(placement["columns"]["dates"])
+            if date_count < pattern["columns_date_fields"]:
+                return False
+
+        # Check for color encoding
+        if pattern.get("has_color_encoding", False) and worksheet_data:
+            viz = worksheet_data.get("visualization", {})
+            if not viz.get("color"):
+                return False
+
+        # Check for text encoding
+        if pattern.get("has_text_encoding", False) and worksheet_data:
+            viz = worksheet_data.get("visualization", {})
+            raw_config = viz.get("raw_config", {})
+            encodings = raw_config.get("encodings", {})
+            if not encodings.get("text_columns"):
+                return False
+
+        # Check for dual measures on rows (donut pattern)
+        if pattern.get("rows_dual_measures", False):
+            if len(placement["rows"]["measures"]) < 2:
+                return False
+
+        # Check for empty columns
+        if pattern.get("columns_empty", False):
+            total_columns = (
+                len(placement["columns"]["dimensions"])
+                + len(placement["columns"]["measures"])
+                + len(placement["columns"]["dates"])
+            )
+            if total_columns > 0:
+                return False
+
+        # Check for color dimension
+        if pattern.get("has_color_dimension", False):
+            if len(placement["color"]["dimensions"]) == 0:
+                return False
+
         return True
+
+    def _detect_connected_devices_scatter(self, worksheet_data: Dict) -> Optional[Dict]:
+        """Detect Connected Devices specific scatter patterns (actually heatmaps)."""
+        viz_config = worksheet_data.get("visualization", {})
+
+        # CD detail pattern: scatter chart with color encoding + time columns = heatmap
+        if (
+            viz_config.get("color")
+            and viz_config.get("x_axis")
+            and any(
+                "RPT_DT" in str(col) or "RPT_TIME" in str(col)
+                for col in viz_config.get("x_axis", [])
+            )
+        ):
+            # Check if there are dimensions on rows (equipment groups)
+            fields = worksheet_data.get("fields", [])
+            rows_dimensions = [
+                f
+                for f in fields
+                if f.get("shelf") == "rows" and f.get("role") == "dimension"
+            ]
+
+            if rows_dimensions:
+                return {
+                    "chart_type": ChartType.HEATMAP.value,
+                    "confidence": 0.90,
+                    "method": DetectionMethod.TABLEAU_MARK,
+                    "reasoning": "Connected Devices pattern: scatter + color encoding + time columns + dimension on rows = heatmap",
+                }
+
+        return None
+
+    def _detect_connected_devices_bar(self, worksheet_data: Dict) -> Optional[Dict]:
+        """Detect Connected Devices specific bar patterns (actually donuts)."""
+        viz_config = worksheet_data.get("visualization", {})
+
+        # CD market/pre/st pattern: dual-axis bar = donut chart
+        if viz_config.get("is_dual_axis", False):
+            fields = worksheet_data.get("fields", [])
+            rows_measures = [
+                f
+                for f in fields
+                if f.get("shelf") == "rows" and f.get("role") == "measure"
+            ]
+
+            # Dual measures on rows + dual axis = donut pattern
+            if len(rows_measures) >= 1:  # At least one measure on rows
+                return {
+                    "chart_type": ChartType.DONUT.value,
+                    "confidence": 0.88,
+                    "method": DetectionMethod.TABLEAU_MARK,
+                    "reasoning": "Connected Devices pattern: dual-axis bar + measures on rows = donut chart",
+                }
+
+        return None
 
     def _has_time_series_pattern(self, fields: List[Dict]) -> bool:
         """Check for time series analysis pattern."""

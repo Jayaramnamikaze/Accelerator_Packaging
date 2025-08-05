@@ -130,6 +130,8 @@ class ViewGenerator(BaseGenerator):
             if dim.get("table_name") == actual_table_name
             and not dim.get("is_internal", False)
         ]
+
+        # Filter measures for this specific table
         table_measures = [
             measure
             for measure in all_measures
@@ -157,14 +159,18 @@ class ViewGenerator(BaseGenerator):
                         # Standard single field
                         table_calculated_fields.append(converted_field)
 
-        # Build view data
+        # Build view data - combine dimensions including hidden ones from calculated fields
+        all_dimensions = (
+            table_dimensions
+            + table_calculated_dimensions  # Hidden dimensions from calculated field two-step pattern
+        )
+
         view_data = {
             "name": view_name,
             "table_name": table_ref,
-            "dimensions": table_dimensions,
+            "dimensions": all_dimensions,  # All dimensions including hidden ones from calculated fields
             "measures": table_measures,
             "calculated_fields": table_calculated_fields,
-            "calculated_dimensions": table_calculated_dimensions,  # Add two-step pattern dimensions
         }
 
         # Generate the view file

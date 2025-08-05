@@ -92,6 +92,12 @@ class WorksheetHandler(BaseHandler):
         # Calculate confidence (enhanced by chart type detection)
         confidence = self._calculate_worksheet_confidence(data, fields, visualization)
 
+        # Identify worksheet-specific measures from field aggregations
+        identified_measures = self._identify_worksheet_measures(fields, datasource_id)
+        logger.info(
+            f"Identified {len(identified_measures)} worksheet-specific measures for {name}"
+        )
+
         # Build WorksheetSchema data
         worksheet_data = {
             "name": name,
@@ -101,6 +107,7 @@ class WorksheetHandler(BaseHandler):
             "calculated_fields": self._extract_calculated_fields(fields),
             "visualization": visualization,
             "filters": filters,
+            "identified_measures": identified_measures,  # NEW: Measure data for Migration Engine
             "actions": actions,
             "dashboard_placements": [],  # Will be populated later by dashboard processing
             "suggested_explore_joins": self._suggest_joins(fields),
@@ -290,6 +297,75 @@ class WorksheetHandler(BaseHandler):
                 return "measure"
 
         return None
+
+    def _identify_worksheet_measures(
+        self, fields: List[Dict], datasource_id: str
+    ) -> List[Dict]:
+        """
+        Identify worksheet-specific measures from field aggregations.
+
+        Returns standardized measure data that Migration Engine can route through MeasureHandler.
+        No coupling to MeasureHandler - just returns data.
+
+        Args:
+            fields: Processed worksheet fields with aggregation info
+            datasource_id: Worksheet datasource identifier
+
+        Returns:
+            List of measure data dicts for Migration Engine to process
+        """
+        identified_measures = []
+        seen_measures = set()  # Track unique field-aggregation combinations
+
+        for field in fields:
+            # Only process measure fields with non-standard aggregations
+            if (
+                field.get("role") == "measure"
+                and field.get("aggregation")
+                and field.get("aggregation").lower() not in ["sum", "none"]
+            ):
+                field_name = field.get("name")
+                aggregation = field.get("aggregation", "").lower()
+
+                # Check for duplicates: same field + aggregation combination
+                measure_key = f"{field_name}_{aggregation}"
+                if measure_key in seen_measures:
+                    continue
+                seen_measures.add(measure_key)
+
+                # Create standardized measure data (no handler coupling)
+                measure_data = {
+                    "name": field_name,
+                    "raw_name": field.get("original_name", f"[{field_name.title()}]"),
+                    "role": "measure",
+                    "aggregation": aggregation,
+                    "datatype": field.get("datatype", "real"),
+                    "table_name": self._extract_table_name(datasource_id),
+                    "label": field.get(
+                        "display_label", field_name.replace("_", " ").title()
+                    ),
+                    "caption": f"Worksheet-specific {aggregation.upper()} aggregation",
+                    "source_type": "worksheet_field",  # Track source
+                    "tableau_instance": field.get("tableau_instance", ""),
+                }
+
+                identified_measures.append(measure_data)
+                logger.debug(
+                    f"Identified worksheet measure: {field_name} ({aggregation.upper()})"
+                )
+
+        return identified_measures
+
+    def _extract_table_name(self, datasource_id: str) -> str:
+        """Extract table name from datasource ID for worksheet measures."""
+        if not datasource_id:
+            return "Orders"  # Default fallback
+
+        # Extract from federated datasource pattern
+        if "federated" in datasource_id:
+            return "Orders"  # Most common case in our samples
+
+        return datasource_id.split(".")[-1] if "." in datasource_id else datasource_id
 
     def _extract_calculated_fields(self, fields: List[Dict]) -> List[str]:
         """Extract names of calculated fields from field list."""

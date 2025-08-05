@@ -26,6 +26,8 @@ class ChartType(str, Enum):
     AREA = "area"
     GANTT = "gantt"
     HEATMAP = "heatmap"
+    # Connected Devices Dashboard Types
+    DONUT = "donut"
     # Grouped/stacked variations
     GROUPED_BAR = "grouped_bar"
     STACKED_BAR = "stacked_bar"
@@ -212,6 +214,10 @@ class WorksheetSchema(BaseModel):
     )
     performance_hints: Dict[str, Any] = Field(
         default_factory=dict, description="Performance optimization hints"
+    )
+    identified_measures: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Worksheet-specific measures identified from field aggregations",
     )
 
     # Processing metadata

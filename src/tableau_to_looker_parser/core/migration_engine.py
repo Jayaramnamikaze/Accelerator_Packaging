@@ -116,6 +116,8 @@ class MigrationEngine:
                 "dimensions": [],
                 "measures": [],
                 "parameters": [],
+                "color_palettes": {},  # Will be populated from Tableau XML
+                "field_encodings": {},  # Will be populated from Tableau XML
                 "calculated_fields": [],
                 # Phase 3: Worksheet and Dashboard data
                 "worksheets": [],
@@ -166,7 +168,15 @@ class MigrationEngine:
                         if handler.__class__.__name__ == "CalculatedFieldHandler":
                             result["calculated_fields"].append(json_data)
                         elif element["type"] == "measure":
-                            result["measures"].append(json_data)
+                            # Handle two-step pattern from measure handler
+                            if json_data.get("two_step_pattern"):
+                                # Add hidden dimension to dimensions
+                                result["dimensions"].append(json_data["dimension"])
+                                # Add measure to measures
+                                result["measures"].append(json_data["measure"])
+                            else:
+                                # Standard single measure
+                                result["measures"].append(json_data)
                         elif element["type"] == "dimension":
                             result["dimensions"].append(json_data)
                         elif element["type"] == "parameter":
@@ -326,8 +336,18 @@ class MigrationEngine:
             raw_worksheets = parser.extract_worksheets(root)
             raw_dashboards = parser.extract_dashboards(root)
 
+            # Extract styling information from Tableau XML
+            self.logger.info("Extracting color palettes and field encodings")
+            color_palettes = parser.extract_color_palettes(root)
+            field_encodings = parser.extract_field_encodings(root)
+
+            # Add styling information to result
+            result["color_palettes"] = color_palettes
+            result["field_encodings"] = field_encodings
+
             self.logger.info(
-                f"Found {len(raw_worksheets)} worksheets and {len(raw_dashboards)} dashboards"
+                f"Found {len(raw_worksheets)} worksheets, {len(raw_dashboards)} dashboards, "
+                f"{len(color_palettes)} color palettes, and encodings for {len(field_encodings)} worksheets"
             )
 
             # Step 2: Process worksheets through WorksheetHandler
@@ -339,6 +359,26 @@ class MigrationEngine:
                     processed = worksheet_handler.convert_to_json(raw_worksheet)
                     processed_worksheets[processed["name"]] = processed
                     result["worksheets"].append(processed)
+
+                    # NEW: Route identified worksheet measures through MeasureHandler
+                    identified_measures = processed.get("identified_measures", [])
+                    for measure_data in identified_measures:
+                        # Route through existing handler infrastructure
+                        measure_handler = MeasureHandler()
+                        if measure_handler.can_handle(measure_data) > 0:
+                            json_data = measure_handler.convert_to_json(measure_data)
+
+                            # Handle two-step pattern routing (same as base measures)
+                            if json_data.get("two_step_pattern"):
+                                result["dimensions"].append(json_data["dimension"])
+                                result["measures"].append(json_data["measure"])
+                            else:
+                                result["measures"].append(json_data)
+
+                    if identified_measures:
+                        self.logger.info(
+                            f"Routed {len(identified_measures)} worksheet measures through MeasureHandler"
+                        )
 
                     self.logger.info(
                         f"Processed worksheet: {processed['name']} "

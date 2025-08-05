@@ -17,7 +17,21 @@ view: {{ view_name }} {
     {% if dimension.description %}
     description: "{{ dimension.description | escape_quotes }}"
     {% endif %}
-    {% if dimension.field_type == 'string' %}
+    {% if dimension.datatype == 'string' %}
+    type: string
+    {% elif dimension.datatype == 'integer' %}
+    type: number
+    {% elif dimension.datatype == 'real' %}
+    type: number
+    {% elif dimension.datatype == 'date' %}
+    type: date
+    {% elif dimension.datatype == 'datetime' %}
+    type: datetime
+    {% elif dimension.datatype == 'time' %}
+    type: time
+    {% elif dimension.datatype == 'boolean' %}
+    type: yesno
+    {% elif dimension.field_type == 'string' %}
     type: string
     {% elif dimension.field_type == 'integer' %}
     type: number
@@ -34,7 +48,11 @@ view: {{ view_name }} {
     {% else %}
     type: string
     {% endif %}
-    sql: ${TABLE}.{{ (dimension.sql_column or dimension.name) | sql_column }} ;;
+    {% if dimension.sql_column %}
+    sql: ${TABLE}.{{ dimension.sql_column | sql_column }} ;;
+    {% else %}
+    sql: ${TABLE}.{{ dimension.name | sql_column }} ;;
+    {% endif %}
     {% if dimension.hidden %}
     hidden: yes
     {% endif %}
@@ -139,12 +157,14 @@ view: {{ view_name }} {
     {% if measure.description %}
     description: "{{ measure.description | escape_quotes }}"
     {% endif %}
+    {% if measure.dimension_reference %}
+    {# Two-step pattern: measure references hidden dimension #}
+    type: {{ measure.aggregation.value if measure.aggregation.value else 'sum' }}
+    sql: ${ {{- measure.dimension_reference -}} } ;;
+    {% else %}
+    {# Legacy pattern: measure references table column directly #}
     type: number
     sql: ${TABLE}.{{ (measure.sql_column or measure.name) | sql_column }} ;;
-    {% if measure.aggregation == 'count' and not measure.sql_column %}
-    {# Count measures without SQL column don't need sql parameter #}
-    {% else %}
-    {# All other measures use the column SQL #}
     {% endif %}
     {% if measure.value_format %}
     value_format: "{{ measure.value_format }}"
