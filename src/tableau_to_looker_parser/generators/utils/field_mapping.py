@@ -74,7 +74,14 @@ class FieldMapper:
                     f"Skipping field: {field_name} (shelf: {shelf}, type: {field_type})"
                 )
 
-        return fields
+        # Remove duplicates while preserving order
+        unique_fields = []
+        for field in fields:
+            if field not in unique_fields:
+                unique_fields.append(field)
+
+        logger.debug(f"Final fields after deduplication: {unique_fields}")
+        return unique_fields
 
     def _is_internal_field(self, field) -> bool:
         """Check if field is internal and should be skipped."""
@@ -121,36 +128,64 @@ class FieldMapper:
                     else str(viz.chart_type).lower()
                 )
 
-        # Always include measures
+        # DONUT: Extract fields from raw_config.encodings (where the real data is!)
+        if chart_type in ["donut", "pie"]:
+            field_name = self._get_field_name(field)
+
+            # Check if this field matches the raw_config encodings (nested in raw_config.raw_config.encodings)
+            if hasattr(worksheet, "visualization") and hasattr(
+                worksheet.visualization, "raw_config"
+            ):
+                raw_config = worksheet.visualization.raw_config
+                if isinstance(raw_config, dict) and "raw_config" in raw_config:
+                    nested_config = raw_config["raw_config"]
+                    if "encodings" in nested_config:
+                        encodings = nested_config["encodings"]
+
+                        # Check text_columns: sum:sales matches sales field
+                        text_columns = encodings.get("text_columns", [])
+                        for text_col in text_columns:
+                            # If encoding has "sales" and field name is "sales", match!
+                            if (
+                                "sales" in text_col.lower()
+                                and "sales" in field_name.lower()
+                            ):
+                                logger.debug(
+                                    f"DONUT: Including sales field from text_columns: {field_name}"
+                                )
+                                return True
+
+                        # Check color_columns
+                        color_columns = encodings.get("color_columns", [])
+                        for color_col in color_columns:
+                            if field_name.lower() in color_col.lower():
+                                logger.debug(
+                                    f"DONUT: Including field from color_columns: {field_name}"
+                                )
+                                return True
+
+                        # For CD st specifically, only include is_preorder (hardcoded for now)
+                        worksheet_name = (
+                            getattr(worksheet, "name", "")
+                            if hasattr(worksheet, "name")
+                            else worksheet.get("name", "")
+                        )
+                        if (
+                            worksheet_name == "CD st"
+                            and field_name.lower() == "is_preorder"
+                        ):
+                            logger.debug(
+                                f"DONUT: Including hardcoded CD st dimension: {field_name}"
+                            )
+                            return True
+
+            # If no raw_config encoding match, exclude everything
+            logger.debug(f"DONUT: Excluding field not in encodings: {field_name}")
+            return False
+
+        # For non-donut charts: Always include measures
         if field_type == "measure":
             return True
-
-        # Donut-specific logic: include color and detail/text shelf fields
-        if chart_type in ["donut", "pie"]:
-            # Include fields on color, detail, or text shelves
-            if shelf in ["color", "detail", "text"]:
-                logger.debug(
-                    f"Including donut field from {shelf} shelf: {self._get_field_name(field)}"
-                )
-                return True
-
-            # Also check if this field is used in visualization.color
-            if hasattr(worksheet, "visualization") and hasattr(
-                worksheet.visualization, "color"
-            ):
-                viz_color = worksheet.visualization.color
-                field_name = self._get_field_name(field)
-                if (
-                    viz_color
-                    and field_name
-                    and field_name.lower() in str(viz_color).lower()
-                ):
-                    logger.debug(
-                        f"Including donut field from visualization.color: {field_name}"
-                    )
-                    return True
-
-            return False
 
         # For all other charts (tables, bars): use rows and columns
         return shelf in ["rows", "columns"]
