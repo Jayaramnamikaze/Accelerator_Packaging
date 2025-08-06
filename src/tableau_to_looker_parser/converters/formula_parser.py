@@ -418,7 +418,15 @@ class FormulaParser:
 
         # LOD expression
         if self.match(TokenType.LEFT_BRACE):
-            return self.parse_lod_expression()
+            # Peek ahead to check if FIXED, INCLUDE, or EXCLUDE follows
+            if (
+                self.check(TokenType.FIXED)
+                or self.check(TokenType.INCLUDE)
+                or self.check(TokenType.EXCLUDE)
+            ):
+                return self.parse_lod_expression()
+            else:
+                return self.parse_derived_table_expression()
 
         # Parenthesized expression
         if self.match(TokenType.LEFT_PAREN):
@@ -612,6 +620,53 @@ class FormulaParser:
             lod_type=lod_type,
             lod_dimensions=dimensions,
             lod_expression=lod_expression,
+        )
+
+    def parse_derived_table_expression(self) -> ASTNode:
+        """
+        Parses non-LOD expressions wrapped in `{}` like {MAX([DTTM])}.
+        These are treated as derived table expressions.
+        """
+        # Parse the inner expression (e.g., MAX([DTTM]))
+        wrapped_expr = self.parse_expression()
+
+        # Consume the closing brace
+        self.consume(TokenType.RIGHT_BRACE, "Expected '}' to close derived expression")
+
+        # Validate structure: must be a function call on a single FIELD_REF
+        if (
+            wrapped_expr.node_type == NodeType.FUNCTION
+            and len(wrapped_expr.arguments) == 1
+            and wrapped_expr.arguments[0].node_type == NodeType.FIELD_REF
+        ):
+            func_name = wrapped_expr.function_name.upper()
+            field_node = wrapped_expr.arguments[0]
+
+            return ASTNode(
+                node_type=NodeType.DERIVED_TABLE,
+                properties={
+                    "aggregation_function": func_name,
+                    "field_name": field_node.field_name,
+                    "original_field": field_node.original_name,
+                    "table_name": "<TO_BE_INFERRED_FROM_XML>",  # Injected later
+                    "table_alias": "base",
+                    "derived_table_alias": f"{func_name.lower()}_table",
+                    "derived_field_alias": f"{func_name.capitalize()}Date",  # e.g., MaxDate
+                },
+            )
+
+        # If the structure doesn't match the pattern, fallback to literal/null
+        self.errors.append(
+            ParserError(
+                message="Expected aggregation function on a single field inside '{...}'",
+                position=self.peek().position,
+                severity="error",
+            )
+        )
+        return ASTNode(
+            node_type=NodeType.LITERAL,
+            value=None,
+            data_type=DataType.NULL,
         )
 
     def parse_field_reference(self) -> ASTNode:

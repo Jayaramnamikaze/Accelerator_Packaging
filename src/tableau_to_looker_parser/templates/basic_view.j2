@@ -1,7 +1,11 @@
 view: {{ view_name }} {
   # Generated from Tableau view: {{ view.original_name if view.original_name else view.name }}
-
-  {% if table_name %}
+  {% if is_derived_table %}
+  derived_table: {
+    sql:
+      {{ derived_table_sql }} ;;
+  }
+  {% else %}
   sql_table_name: {{ table_name }} ;;
   {% endif %}
 

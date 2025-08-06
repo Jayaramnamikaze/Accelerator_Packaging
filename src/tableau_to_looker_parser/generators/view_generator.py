@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from .base_generator import BaseGenerator
 from ..converters.ast_to_lookml_converter import ASTToLookMLConverter
-from ..models.ast_schema import ASTNode
+from ..models.ast_schema import ASTNode, NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,6 @@ class ViewGenerator(BaseGenerator):
         output_dir: str,
     ) -> str:
         """Generate a single view file."""
-        # Find the actual table this view represents
         actual_table, table_ref = self._resolve_view_table(view_name, migration_data)
 
         if not actual_table:
@@ -123,49 +122,66 @@ class ViewGenerator(BaseGenerator):
 
         actual_table_name = actual_table["name"]
 
-        # Filter dimensions and measures for this specific table
         table_dimensions = [
             dim for dim in all_dimensions if dim.get("table_name") == actual_table_name
         ]
         table_measures = [
-            measure
-            for measure in all_measures
-            if measure.get("table_name") == actual_table_name
+            m for m in all_measures if m.get("table_name") == actual_table_name
         ]
 
-        # Filter calculated fields for this specific table and convert AST to LookML
         table_calculated_fields = []
-        table_calculated_dimensions = []  # For two-step pattern dimensions
+        table_calculated_dimensions = []
+
+        table_name = self._format_table_name(table_ref)
+
+        # NEW: Placeholder for derived table SQL
+        derived_table_sql = None
+        is_derived_table = False
+
         for calc_field in all_calculated_fields:
-            # Include calculated fields with matching table_name or with placeholder "__UNASSIGNED_TABLE__"
-            if (
-                calc_field.get("table_name") == actual_table_name
-                or calc_field.get("table_name") == "__UNASSIGNED_TABLE__"
-            ):
-                # Convert AST to LookML SQL using our converter
+            if calc_field.get("table_name") in [
+                actual_table_name,
+                "__UNASSIGNED_TABLE__",
+            ]:
                 converted_field = self._convert_calculated_field(calc_field, view_name)
                 if converted_field:
-                    # Check if this is a two-step pattern
+                    # NEW: Check if this field defines a derived table
+                    ast_data = calc_field.get("calculation", {}).get("ast", {})
+                    if ast_data:
+                        try:
+                            ast_node = ASTNode(**ast_data)
+                            if ast_node.node_type == NodeType.DERIVED_TABLE:
+                                derived_table_sql = (
+                                    self.ast_converter.convert_to_lookml(
+                                        ast_node, table_name=table_name
+                                    )
+                                )
+                                is_derived_table = True
+                                logger.info(
+                                    f"Derived table detected in {calc_field['name']} for view {view_name}"
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to check derived table for field {calc_field.get('name')}: {e}"
+                            )
+
                     if converted_field.get("two_step_pattern"):
-                        # Add dimension to calculated dimensions list
                         table_calculated_dimensions.append(converted_field["dimension"])
-                        # Add measure to calculated fields list
                         table_calculated_fields.append(converted_field["measure"])
                     else:
-                        # Standard single field
                         table_calculated_fields.append(converted_field)
 
-        # Build view data
         view_data = {
             "name": view_name,
             "table_name": table_ref,
             "dimensions": table_dimensions,
             "measures": table_measures,
             "calculated_fields": table_calculated_fields,
-            "calculated_dimensions": table_calculated_dimensions,  # Add two-step pattern dimensions
+            "calculated_dimensions": table_calculated_dimensions,
+            "derived_table_sql": derived_table_sql,  # <-- NEW
+            "is_derived_table": is_derived_table,  # <-- NEW
         }
 
-        # Generate the view file
         return self._create_view_file(view_data, output_dir)
 
     def _resolve_view_table(self, view_name: str, migration_data: Dict) -> tuple:
@@ -479,7 +495,6 @@ TODO: Manual migration required - please convert this formula manually""",
     def _create_view_file(self, view_data: Dict, output_dir: str) -> str:
         """Create a single view file from view data."""
         try:
-            # Prepare template context
             context = {
                 "view": SimpleNamespace(**view_data),
                 "view_name": self._clean_name(view_data["name"]),
@@ -487,9 +502,7 @@ TODO: Manual migration required - please convert this formula manually""",
                 "dimensions": view_data["dimensions"],
                 "measures": view_data["measures"],
                 "calculated_fields": view_data["calculated_fields"],
-                "calculated_dimensions": view_data.get(
-                    "calculated_dimensions", []
-                ),  # Add calculated dimensions
+                "calculated_dimensions": view_data.get("calculated_dimensions", []),
                 "has_dimensions": len(view_data["dimensions"]) > 0,
                 "has_measures": len(view_data["measures"]) > 0,
                 "has_calculated_fields": len(view_data["calculated_fields"]) > 0,
@@ -497,12 +510,11 @@ TODO: Manual migration required - please convert this formula manually""",
                     view_data.get("calculated_dimensions", [])
                 )
                 > 0,
+                "derived_table_sql": view_data.get("derived_table_sql"),  # <-- NEW
+                "is_derived_table": view_data.get("is_derived_table", False),  # <-- NEW
             }
 
-            # Render template
             content = self.template_engine.render_template("basic_view.j2", context)
-
-            # Write to file
             output_path = self._ensure_output_dir(output_dir)
             view_filename = f"{self._clean_name(view_data['name'])}{self.view_extension}{self.lookml_extension}"
             file_path = output_path / view_filename
