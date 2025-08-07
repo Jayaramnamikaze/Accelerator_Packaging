@@ -9,7 +9,7 @@ import logging
 from typing import Dict, List, Optional, Any
 from ..handlers.base_handler import BaseHandler
 from ..models.worksheet_models import WorksheetSchema, ChartType
-from ..converters.enhanced_chart_type_detector import EnhancedChartTypeDetector
+from ..converters.tableau_chart_rule_engine import TableauChartRuleEngine
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +23,16 @@ class WorksheetHandler(BaseHandler):
     Enhanced with multi-tier chart type detection system.
     """
 
-    def __init__(self, enable_enhanced_detection: bool = True):
+    def __init__(self, enable_yaml_detection: bool = True):
         """
-        Initialize WorksheetHandler with optional enhanced chart type detection.
+        Initialize WorksheetHandler with YAML-based chart type detection.
 
         Args:
-            enable_enhanced_detection: Use EnhancedChartTypeDetector for better accuracy
+            enable_yaml_detection: Use TableauChartRuleEngine for rule-based detection
         """
-        self.enable_enhanced_detection = enable_enhanced_detection
-        if enable_enhanced_detection:
-            self.chart_detector = EnhancedChartTypeDetector()
+        self.enable_yaml_detection = enable_yaml_detection
+        if enable_yaml_detection:
+            self.chart_detector = TableauChartRuleEngine()
         else:
             self.chart_detector = None
 
@@ -83,7 +83,7 @@ class WorksheetHandler(BaseHandler):
 
         # Extract basic properties
         name = data["name"]
-        if name == "CD detail":
+        if name in ["CD detail", "CD st", "CD pre", "CD interval", "connect total"]:
             print(f"🔧 WORKSHEET DEBUG: Processing worksheet '{name}'")
         clean_name = data.get("clean_name", self._clean_name(name))
         datasource_id = data["datasource_id"]
@@ -91,8 +91,8 @@ class WorksheetHandler(BaseHandler):
         # Process fields
         fields = self._process_fields(data.get("fields", []))
 
-        # Process visualization with enhanced chart type detection
-        visualization = self._process_visualization_enhanced(data, fields)
+        # Process visualization with YAML rule-based chart type detection
+        visualization = self._process_visualization_with_yaml_rules(data, fields)
 
         # Process filters and actions
         filters = data.get("filters", [])
@@ -175,59 +175,72 @@ class WorksheetHandler(BaseHandler):
 
         return processed_fields
 
-    def _process_visualization_enhanced(
+    def _process_visualization_with_yaml_rules(
         self, worksheet_data: Dict, fields: List[Dict]
     ) -> Dict:
         """
-        Process visualization with enhanced chart type detection.
+        Process visualization with YAML rule-based chart type detection.
 
-        Uses the EnhancedChartTypeDetector for better accuracy, falls back to
-        basic processing if enhanced detection is disabled.
+        Uses the TableauChartRuleEngine for configurable, rule-based detection.
+        Falls back to basic processing if YAML detection is disabled.
         """
         raw_viz = worksheet_data.get("visualization", {})
 
         # Start with basic visualization processing
         viz_config = self._process_visualization_basic(raw_viz)
 
-        # Enhance with advanced chart type detection
-        if self.enable_enhanced_detection and self.chart_detector:
+        # Apply YAML rule-based chart type detection
+        if self.enable_yaml_detection and self.chart_detector:
             logger.debug(
-                f"Running enhanced detection for worksheet: {worksheet_data.get('name', 'unknown')}"
+                f"Running YAML rule detection for worksheet: {worksheet_data.get('name', 'unknown')}"
             )
-            # Prepare data for enhanced detection
-            detection_data = {
+
+            # Prepare data for YAML rule detection
+            detection_input = {
                 "name": worksheet_data.get("name", ""),
                 "fields": fields,
                 "visualization": viz_config,
+                "datasource_id": worksheet_data.get("datasource_id"),
             }
-            logger.debug(f"Detection input data: {detection_data}")
+            logger.debug(f"YAML detection input: {detection_input}")
 
-            # Run enhanced detection
-            detection_result = self.chart_detector.detect_chart_type(detection_data)
-            logger.debug(f"Enhanced detection result: {detection_result}")
+            # Run YAML rule-based detection
+            detection_result = self.chart_detector.detect_chart_type(detection_input)
+            logger.debug(f"YAML detection result: {detection_result}")
 
-            # Update visualization config with enhanced results
+            # Debug for CD worksheets specifically
+            if worksheet_data.get("name") in [
+                "CD st",
+                "CD pre",
+                "CD interval",
+                "connect total",
+            ]:
+                print("🔧 CD ST DEBUG - Detection Input:")
+                print(f"   viz_config: {viz_config}")
+                print(f"   detection_result: {detection_result}")
+
+            # Update visualization config with YAML rule results
             viz_config.update(
                 {
                     "chart_type": detection_result["chart_type"],
-                    "enhanced_detection": {
+                    "yaml_detection": {
                         "confidence": detection_result["confidence"],
-                        "method": detection_result["method"].value
-                        if hasattr(detection_result["method"], "value")
-                        else str(detection_result["method"]),
+                        "method": detection_result["method"],
                         "reasoning": detection_result.get("reasoning", ""),
+                        "matched_rule": detection_result.get("matched_rule"),
                         "is_dual_axis": detection_result.get("is_dual_axis", False),
-                        "primary_type": detection_result.get("primary_type"),
-                        "secondary_type": detection_result.get("secondary_type"),
+                        "looker_equivalent": detection_result.get("looker_equivalent"),
+                        "pivot_required": detection_result.get("pivot_required", False),
                     },
                 }
             )
-            logger.debug(
-                f"Updated visualization config chart_type: {viz_config.get('chart_type')}"
+            logger.info(
+                f"YAML detection for '{worksheet_data.get('name')}': "
+                f"{viz_config.get('chart_type')} (rule: {detection_result.get('matched_rule')})"
             )
         else:
             logger.debug(
-                f"Enhanced detection disabled or detector missing: enabled={self.enable_enhanced_detection}, detector={self.chart_detector is not None}"
+                f"YAML detection disabled or detector missing: enabled={self.enable_yaml_detection}, detector={self.chart_detector is not None}"
             )
 
         return viz_config
@@ -451,18 +464,22 @@ class WorksheetHandler(BaseHandler):
         if fields and all("name" in field and "role" in field for field in fields):
             confidence += 0.1
 
-        # Enhanced chart type detection confidence boost
-        enhanced_detection = visualization.get("enhanced_detection", {})
-        if enhanced_detection:
-            # Use the enhanced detection confidence, weighted
-            detection_confidence = enhanced_detection.get("confidence", 0.5)
+        # YAML rule-based chart type detection confidence boost
+        yaml_detection = visualization.get("yaml_detection", {})
+        if yaml_detection:
+            # Use the YAML detection confidence, weighted
+            detection_confidence = yaml_detection.get("confidence", 0.5)
             detection_boost = (
                 detection_confidence - 0.5
             ) * 0.3  # Scale to 0-0.15 boost
             confidence += detection_boost
 
             # Extra boost for dual-axis detection (high value)
-            if enhanced_detection.get("is_dual_axis", False):
+            if yaml_detection.get("is_dual_axis", False):
+                confidence += 0.05
+
+            # Extra boost for rule matches (indicates good pattern matching)
+            if yaml_detection.get("matched_rule"):
                 confidence += 0.05
         else:
             # Fallback to basic chart type check
