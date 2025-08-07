@@ -94,13 +94,16 @@ class TemplateEngine:
 
         import re
 
+        # First, remove Tableau brackets if present
+        clean_value = value.strip("[]")
+
         # Check if column name needs quoting (contains spaces, special chars, or is a reserved word)
         needs_quoting = (
-            " " in value  # Contains spaces
-            or "-" in value  # Contains hyphens
-            or "." in value  # Contains dots
-            or re.search(r"[^a-zA-Z0-9_]", value)  # Contains special characters
-            or value.upper()
+            " " in clean_value  # Contains spaces
+            or "-" in clean_value  # Contains hyphens
+            or "." in clean_value  # Contains dots
+            or re.search(r"[^a-zA-Z0-9_]", clean_value)  # Contains special characters
+            or clean_value.upper()
             in {
                 "ORDER",
                 "GROUP",
@@ -120,10 +123,10 @@ class TemplateEngine:
 
         if needs_quoting:
             # Remove existing backticks if present and add new ones
-            clean_value = value.strip("`")
+            clean_value = clean_value.strip("`")
             return f"`{clean_value}`"
 
-        return value
+        return clean_value
 
     def render_template(self, template_name: str, context: Dict[str, Any]) -> str:
         """

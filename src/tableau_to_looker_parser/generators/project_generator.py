@@ -10,6 +10,7 @@ from .base_generator import BaseGenerator
 from .connection_generator import ConnectionGenerator
 from .view_generator import ViewGenerator
 from .model_generator import ModelGenerator
+from .dashboard_generator import DashboardGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +25,11 @@ class ProjectGenerator(BaseGenerator):
         self.connection_generator = ConnectionGenerator(template_dir)
         self.view_generator = ViewGenerator(template_dir)
         self.model_generator = ModelGenerator(template_dir)
+        self.dashboard_generator = DashboardGenerator(template_dir)
 
-        logger.info("Project generator initialized with all sub-generators")
+        logger.info(
+            "Project generator initialized with all sub-generators including dashboard generator"
+        )
 
     def generate_project_files(
         self, migration_data: Dict, output_dir: str
@@ -57,6 +61,11 @@ class ProjectGenerator(BaseGenerator):
             # Generate model file
             generated_files["model"] = self._generate_model(migration_data, output_dir)
 
+            # Generate dashboard files
+            generated_files["dashboards"] = self._generate_dashboards(
+                migration_data, output_dir
+            )
+
             logger.info(f"Generated {len(generated_files)} file types in {output_dir}")
             return generated_files
 
@@ -80,6 +89,17 @@ class ProjectGenerator(BaseGenerator):
     def _generate_model(self, migration_data: Dict, output_dir: str) -> str:
         """Generate model file with explores and joins."""
         return self.model_generator.generate(migration_data, output_dir)
+
+    def _generate_dashboards(self, migration_data: Dict, output_dir: str) -> list:
+        """Generate dashboard files if dashboards exist."""
+        dashboards = migration_data.get("dashboards")
+        if not dashboards:
+            logger.info("No dashboards found in migration data")
+            return []
+
+        dashboard_files = self.dashboard_generator.generate(migration_data, output_dir)
+        logger.info(f"Generated {len(dashboard_files)} dashboard files")
+        return dashboard_files
 
     def validate_output_directory(self, output_dir: str) -> bool:
         """

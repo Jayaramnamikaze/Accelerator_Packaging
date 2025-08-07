@@ -70,42 +70,68 @@ class MeasureHandler(BaseHandler):
         return 0.5
 
     def convert_to_json(self, data: Dict) -> Dict:
-        """Convert raw measure data to schema-compliant JSON.
+        """Convert raw measure data to two-step pattern: dimension + measure.
 
         Args:
             raw_data: Raw data dict from XMLParser.extract_measure()
 
         Returns:
-            Dict: Schema-compliant measure data
+            Dict: Two-step pattern with both dimension and measure
         """
         # Use the clean field name from v2 parser, fallback to cleaning raw_name for v1
-        name = data.get("name") or self._clean_field_name(data["raw_name"])
+        base_name = data.get("name") or self._clean_field_name(data["raw_name"])
 
-        # Build base measure
+        # Get aggregation type
+        aggregation = self.AGGREGATION_MAP.get(
+            data["aggregation"].lower(), AggregationType.SUM
+        )
+
+        # CR #2 Fix: Generate proper measure name with total_ prefix for SUM aggregation
+        if aggregation == AggregationType.SUM:
+            measure_name = f"total_{base_name}"
+        else:
+            measure_name = f"{aggregation.value}_{base_name}"
+
+        # Two-step pattern implementation
         json_data = {
-            "name": name,
-            "aggregation": self.AGGREGATION_MAP.get(
-                data["aggregation"].lower(), AggregationType.SUM
-            ),
-            "table_name": data.get("table_name"),  # Include table association
-            "label": data.get("label"),
-            "description": self._build_description(data),
-            "hidden": False,
+            "two_step_pattern": True,
+            "dimension": {
+                "name": f"{base_name}_raw",
+                "table_name": data.get("table_name"),
+                "datatype": data.get("datatype", "real"),
+                "role": "dimension",
+                "hidden": True,  # Hidden raw dimension
+                "sql_column": data.get("raw_name", f"[{base_name.title()}]"),
+                "description": f"Raw field for {base_name}",
+                "label": f"{base_name.replace('_', ' ').title()} (Raw)",
+            },
+            "measure": {
+                "name": measure_name,  # CR #2 Fix: Proper naming
+                "aggregation": aggregation,
+                "table_name": data.get("table_name"),
+                "label": data.get("label")
+                or f"Total {base_name.replace('_', ' ').title()}",
+                "description": self._build_description(data),
+                "hidden": False,
+                "dimension_reference": f"{base_name}_raw",  # References the raw dimension
+            },
         }
 
         # Add value format if present
         if data.get("number_format"):
-            json_data["value_format"] = self._convert_format(data["number_format"])
+            json_data["measure"]["value_format"] = self._convert_format(
+                data["number_format"]
+            )
 
         # Add drill-down settings if present
         if data.get("drill_down"):
-            json_data["drill_fields"] = data["drill_down"]["fields"]
+            json_data["measure"]["drill_fields"] = data["drill_down"]["fields"]
             if data["drill_down"]["default"]:
-                json_data["drill_down_default"] = True
+                json_data["measure"]["drill_down_default"] = True
 
-        # Add calculation if present
+        # Add calculation if present (goes to measure, not dimension)
         if data.get("calculation"):
-            json_data["sql"] = data["calculation"]
+            json_data["measure"]["sql"] = data["calculation"]
 
         return json_data
 
