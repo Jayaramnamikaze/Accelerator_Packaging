@@ -50,7 +50,7 @@ class MigrationEngine:
         )  # After regular fields
 
         # Register Phase 3 handlers (worksheets and dashboards)
-        self.register_handler(WorksheetHandler(), priority=7)
+        self.register_handler(WorksheetHandler(enable_yaml_detection=True), priority=7)
         self.register_handler(DashboardHandler(), priority=8)
 
     def register_handler(self, handler: BaseHandler, priority: int = 100) -> None:
