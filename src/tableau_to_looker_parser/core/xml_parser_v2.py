@@ -1088,7 +1088,7 @@ class TableauXMLParserV2:
                 if pane_encodings is not None:
                     for encoding in pane_encodings:
                         encoding_type = encoding.tag
-                        field = encoding.get("field", "")
+                        field = encoding.get("column", "")
                         palette = encoding.get("palette", "")
 
                         if encoding_type == "color":
@@ -1260,8 +1260,8 @@ class TableauXMLParserV2:
             caption = self._lookup_field_caption(worksheet, column_ref)
             datatype = self._infer_datatype_from_type(field_type)
 
-        # Determine shelf placement
-        shelf = self._determine_field_shelf(worksheet, instance_name)
+        # Determine shelf placement and encoding type
+        shelf_info = self._determine_field_shelf_and_encoding(worksheet, instance_name)
 
         return {
             "name": clean_name,
@@ -1270,39 +1270,93 @@ class TableauXMLParserV2:
             "datatype": datatype,
             "role": role,
             "aggregation": derivation if derivation != "None" else None,
-            "shelf": shelf,
+            "shelf": shelf_info["shelf"],
+            "encodings": shelf_info["encodings"],  # List of all encodings
             "derivation": derivation,
             "caption": caption,
         }
 
-    def _determine_field_shelf(self, worksheet: Element, instance_name: str) -> str:
-        """Determine which shelf a field instance is placed on."""
+    def _determine_field_shelf_and_encoding(
+        self, worksheet: Element, instance_name: str
+    ) -> Dict:
+        """Determine both shelf placement and encoding types for a field instance."""
+        shelf = "detail"  # Default shelf
+        encodings_list = []  # List of all encodings
+
+        worksheet_name = worksheet.get("name", "unknown")
+
+        # Debug for CD st worksheet specifically
+        debug_cd_st = (
+            worksheet_name == "CD st"
+            and "Calculation_5910989867950081" in instance_name
+        )
+        if debug_cd_st:
+            print(
+                f"🔧 SHELF DEBUG: Processing field '{instance_name}' in worksheet '{worksheet_name}'"
+            )
+
         # Check rows shelf
         rows_elem = worksheet.find(".//rows")
         if rows_elem is not None and instance_name in (rows_elem.text or ""):
-            return "rows"
+            shelf = "rows"
 
         # Check columns shelf
         cols_elem = worksheet.find(".//cols")
         if cols_elem is not None and instance_name in (cols_elem.text or ""):
-            return "columns"
+            shelf = "columns"
 
-        # Check encodings (color, size, etc.)
-        pane = worksheet.find(".//pane")
-        if pane is not None:
-            for encoding in pane.findall(".//encoding") or []:
-                encoding_type = encoding.tag
-                if encoding.get("column") == instance_name:
-                    return encoding_type
+        # Check all encodings (color, size, text, etc.) - CHECK ALL PANES
+        panes = worksheet.findall(".//pane")
+        if debug_cd_st:
+            print(f"🔧 SHELF DEBUG: Found {len(panes)} panes")
+
+        for pane_idx, pane in enumerate(panes):
+            if debug_cd_st:
+                print(f"🔧 SHELF DEBUG: Checking pane {pane_idx}")
 
             # Check direct encoding attributes
             encodings = pane.find("encodings")
             if encodings is not None:
                 for child in encodings:
-                    if child.get("column") == instance_name:
-                        return child.tag
+                    encoding_column = child.get("column", "")
 
-        return "detail"  # Default shelf
+                    if debug_cd_st:
+                        print(
+                            f"🔧 SHELF DEBUG: Found encoding '{child.tag}' with column '{encoding_column}'"
+                        )
+
+                    # Check for exact match or suffix match (handle federated prefix)
+                    if (
+                        encoding_column == instance_name
+                        or encoding_column.endswith(f"].{instance_name}")
+                        or encoding_column.endswith(instance_name)
+                    ):
+                        if child.tag not in encodings_list:  # Avoid duplicates
+                            encodings_list.append(child.tag)
+                            if debug_cd_st:
+                                print(
+                                    f"🔧 SHELF DEBUG: ✅ MATCHED encoding '{child.tag}' for field '{instance_name}'"
+                                )
+
+        # Set shelf based on primary encoding if found
+        if "color" in encodings_list:
+            shelf = "color"
+        elif "size" in encodings_list:
+            shelf = "size"
+        elif "text" in encodings_list:
+            shelf = "text"
+
+        if debug_cd_st:
+            print(
+                f"🔧 SHELF DEBUG: Final result - shelf: '{shelf}', encodings: {encodings_list}"
+            )
+
+        return {"shelf": shelf, "encodings": encodings_list}
+
+    def _determine_field_shelf(self, worksheet: Element, instance_name: str) -> str:
+        """Legacy method - determine which shelf a field instance is placed on."""
+        shelf_info = self._determine_field_shelf_and_encoding(worksheet, instance_name)
+        return shelf_info["shelf"]
 
     def _extract_visualization_config(self, worksheet: Element) -> Dict:
         """Extract visualization configuration from worksheet panes."""

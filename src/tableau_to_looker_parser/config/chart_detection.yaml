@@ -22,6 +22,8 @@ basic_chart_detection:
     pivot_required: true
     pivot_type: "crosstab"
     looker_equivalent: "looker_grid"
+    fields_sources: ["rows_shelf","column_shelf", "text_marks"]
+    pivot_field_source: ["columns_shelf"]
 
   # Bar Chart Detection (Your Favorite)
   bar_chart:
@@ -72,8 +74,20 @@ basic_chart_detection:
           conditions:
             - color_encoding: "categorical"
             - has_mark_stacking: false
-    pivot_required: false
+      - temporal_column:
+          conditions:
+            - x_encoding: "temporal"
+            - columns_shelf_count: ">1"  # Multiple fields on columns (e.g., date + time)
+          pivot_required: true
+          fields_sources: ["rows_shelf", "columns_shelf"]
+          pivot_field_source: ["columns_shelf"]
+          pivot_selection_logic: "all_except_last"  # Take all fields except the last one
+    pivot_required: true
     looker_equivalent: "looker_column"
+    fields_sources: ["rows_shelf", "columns_shelf"]
+    pivot_field_source: ["columns_shelf"]
+    pivot_selection_logic: "all_except_last"
+
 
   # Line Chart
   line_chart:
@@ -142,8 +156,10 @@ basic_chart_detection:
       #- inner_radius: ">0"
     confidence: 90
     detection_notes: "Pie chart with dual axis indicates donut configuration"
-    pivot_required: false
-    looker_equivalent: "looker_pie"  # Note: Looker doesn't support donut, will be pie
+    pivot_required: true
+    fields_sources: ["color_marks", "text_marks"]
+    pivot_field_source: ["color_marks"]
+    looker_equivalent: "looker_donut_multiples"  # Note: Looker doesn't support donut, will be pie
     migration_warning: "Looker doesn't support donut charts - will convert to pie"
 
   # Scatter Plot

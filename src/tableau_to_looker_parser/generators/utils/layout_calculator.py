@@ -241,3 +241,37 @@ class LayoutCalculator:
                     suggestions["overlapping_elements"].append((i, j, overlap))
 
         return suggestions
+
+    def calculate_looker_position(
+        self, element: DashboardElement, migration_data: Dict[str, Any]
+    ) -> Dict[str, int]:
+        """
+        Calculate clean Looker-native positioning from dashboard element.
+
+        Simplified version for Looker-native dashboards without ECharts complexity.
+
+        Args:
+            element: Dashboard element with position information
+            migration_data: Migration data containing dashboard context
+
+        Returns:
+            Dictionary with row, col, width, height for Looker LookML
+        """
+        position = {
+            "row": max(0, int(element.position.y * 20)),
+            "col": max(0, int(element.position.x * self.grid_columns)),
+            "width": max(1, int(element.position.width * self.grid_columns)),
+            "height": max(
+                1, int(element.position.height * 10)
+            ),  # Slightly compressed for clean look
+        }
+
+        # Ensure reasonable minimums for readability
+        position["width"] = max(6, position["width"])  # At least 6 columns wide
+        position["height"] = max(4, position["height"])  # At least 4 rows high
+
+        # Ensure elements don't overflow
+        if position["col"] + position["width"] > self.grid_columns:
+            position["col"] = max(0, self.grid_columns - position["width"])
+
+        return position

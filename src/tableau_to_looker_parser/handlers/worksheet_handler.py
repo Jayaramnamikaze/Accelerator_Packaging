@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Any
 from ..handlers.base_handler import BaseHandler
 from ..models.worksheet_models import WorksheetSchema, ChartType
 from ..converters.tableau_chart_rule_engine import TableauChartRuleEngine
+from ..core.field_derivation_engine import FieldDerivationEngine
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,9 @@ class WorksheetHandler(BaseHandler):
         else:
             self.chart_detector = None
 
+        # Initialize field derivation engine for Tableau instance processing
+        self.field_derivation_engine = FieldDerivationEngine()
+
     def can_handle(self, data: Dict) -> float:
         """Check if data contains worksheet information."""
         if not isinstance(data, dict):
@@ -61,6 +65,9 @@ class WorksheetHandler(BaseHandler):
 
         # Check for text-only or placeholder worksheets
         if self._is_text_or_placeholder_worksheet(data, fields):
+            # Debug output for CD detail
+            if data.get("name") == "CD detail":
+                print("🔧 CD DETAIL FILTERED OUT by _is_text_or_placeholder_worksheet")
             return 0.0
 
         # High confidence if it has typical worksheet elements
@@ -83,7 +90,7 @@ class WorksheetHandler(BaseHandler):
 
         # Extract basic properties
         name = data["name"]
-        if name in ["CD detail", "CD st", "CD pre", "CD interval", "connect total"]:
+        if name in ["CD st"]:
             print(f"🔧 WORKSHEET DEBUG: Processing worksheet '{name}'")
         clean_name = data.get("clean_name", self._clean_name(name))
         datasource_id = data["datasource_id"]
@@ -107,6 +114,21 @@ class WorksheetHandler(BaseHandler):
             f"Identified {len(identified_measures)} worksheet-specific measures for {name}"
         )
 
+        # Identify derived fields from Tableau instances (time functions, aggregations)
+        derived_fields = self._identify_derived_fields_from_visualization(
+            visualization, datasource_id
+        )
+        print(
+            f"🚀 WORKSHEET HANDLER DEBUG: {name} has {len(derived_fields)} derived fields"
+        )
+        if derived_fields:
+            for df in derived_fields:
+                print(
+                    f"   - {df.get('name')} ({df.get('field_type')}) from {df.get('original_tableau_instance')}"
+                )
+        else:
+            print("   - No derived fields found")
+
         # Build WorksheetSchema data
         worksheet_data = {
             "name": name,
@@ -117,6 +139,7 @@ class WorksheetHandler(BaseHandler):
             "visualization": visualization,
             "filters": filters,
             "identified_measures": identified_measures,  # NEW: Measure data for Migration Engine
+            "derived_fields": derived_fields,  # NEW: Derived field data for Migration Engine
             "actions": actions,
             "dashboard_placements": [],  # Will be populated later by dashboard processing
             "suggested_explore_joins": self._suggest_joins(fields),
@@ -165,6 +188,7 @@ class WorksheetHandler(BaseHandler):
                 "role": field.get("role", "dimension"),
                 "aggregation": field.get("aggregation"),
                 "shelf": field.get("shelf", "unknown"),
+                "encodings": field.get("encodings", []),  # Add encodings list
                 "derivation": field.get("derivation", "None"),
                 "suggested_type": self._suggest_lookml_type(field),
                 "drill_fields": [],
@@ -191,9 +215,14 @@ class WorksheetHandler(BaseHandler):
 
         # Apply YAML rule-based chart type detection
         if self.enable_yaml_detection and self.chart_detector:
-            logger.debug(
-                f"Running YAML rule detection for worksheet: {worksheet_data.get('name', 'unknown')}"
-            )
+            worksheet_name = worksheet_data.get("name", "unknown")
+            logger.debug(f"Running YAML rule detection for worksheet: {worksheet_name}")
+
+            # Debug output for CD detail
+            if worksheet_name == "CD detail":
+                print(
+                    f"🔧 CD DETAIL YAML DETECTION: enabled={self.enable_yaml_detection}, detector={self.chart_detector is not None}"
+                )
 
             # Prepare data for YAML rule detection
             detection_input = {
@@ -205,11 +234,25 @@ class WorksheetHandler(BaseHandler):
             logger.debug(f"YAML detection input: {detection_input}")
 
             # Run YAML rule-based detection
-            detection_result = self.chart_detector.detect_chart_type(detection_input)
-            logger.debug(f"YAML detection result: {detection_result}")
+            try:
+                detection_result = self.chart_detector.detect_chart_type(
+                    detection_input
+                )
+                logger.debug(f"YAML detection result: {detection_result}")
+
+                # Debug for CD detail specifically
+                if worksheet_name == "CD detail":
+                    print(f"🔧 CD DETAIL YAML RESULT: {detection_result}")
+            except Exception as e:
+                logger.error(f"YAML detection failed for {worksheet_name}: {e}")
+                if worksheet_name == "CD detail":
+                    print(f"🔧 CD DETAIL YAML ERROR: {e}")
+                # Fall back to basic detection
+                return viz_config
 
             # Debug for CD worksheets specifically
             if worksheet_data.get("name") in [
+                "CD detail",
                 "CD st",
                 "CD pre",
                 "CD interval",
@@ -231,6 +274,13 @@ class WorksheetHandler(BaseHandler):
                         "is_dual_axis": detection_result.get("is_dual_axis", False),
                         "looker_equivalent": detection_result.get("looker_equivalent"),
                         "pivot_required": detection_result.get("pivot_required", False),
+                        "fields_sources": detection_result.get("fields_sources", []),
+                        "pivot_field_source": detection_result.get(
+                            "pivot_field_source", []
+                        ),
+                        "pivot_selection_logic": detection_result.get(
+                            "pivot_selection_logic"
+                        ),
                     },
                 }
             )
@@ -369,6 +419,209 @@ class WorksheetHandler(BaseHandler):
                 )
 
         return identified_measures
+
+    def _identify_derived_fields_from_visualization(
+        self, visualization: Dict, datasource_id: str
+    ) -> List[Dict]:
+        """
+        Identify derived fields from visualization patterns like tdy:RPT_DT:ok and sum:sales:qk.
+
+        Uses FieldDerivationEngine to detect time functions and aggregations from
+        visualization axis and encoding patterns.
+
+        Args:
+            visualization: Visualization configuration with axis and encoding data
+            datasource_id: Worksheet datasource identifier
+
+        Returns:
+            List of derived field data dicts for Migration Engine to process
+        """
+        derived_fields = []
+        seen_patterns = set()  # Track unique patterns
+
+        # Collect all patterns from visualization
+        patterns = []
+
+        # Get patterns from axes
+        x_axis = visualization.get("x_axis", [])
+        y_axis = visualization.get("y_axis", [])
+        patterns.extend(x_axis)
+        patterns.extend(y_axis)
+
+        # Get patterns from encodings
+        color = visualization.get("color", "")
+        if color:
+            patterns.append(color)
+
+        size = visualization.get("size", "")
+        if size:
+            patterns.append(size)
+
+        for pattern in patterns:
+            if not isinstance(pattern, str) or pattern in seen_patterns:
+                continue
+
+            # Clean federated prefixes: [federated.xxx].[pattern] → pattern
+            clean_pattern = self._clean_federated_pattern(pattern)
+            if not clean_pattern:
+                continue
+
+            # Check if this looks like a derivable pattern
+            if self._is_derivable_visualization_pattern(clean_pattern):
+                # Derive field definition using the engine
+                derived_field = self._derive_field_from_visualization_pattern(
+                    clean_pattern, datasource_id
+                )
+
+                if derived_field:
+                    derived_fields.append(derived_field)
+                    seen_patterns.add(pattern)
+
+                    logger.debug(
+                        f"Derived field from visualization pattern: {pattern} → {derived_field['name']} ({derived_field['field_type']})"
+                    )
+
+        return derived_fields
+
+    def _clean_federated_pattern(self, pattern: str) -> str:
+        """
+        Clean federated patterns to extract the actual field pattern.
+
+        Examples:
+        - [federated.xxx].[sum:sales:qk] → sum:sales:qk
+        - tdy:RPT_DT:ok → tdy:RPT_DT:ok
+        """
+        if pattern.startswith("[federated.") and "].[" in pattern:
+            # Extract pattern after ].[
+            parts = pattern.split("].[")
+            if len(parts) > 1:
+                return parts[1].rstrip("]")
+
+        return pattern
+
+    def _is_derivable_visualization_pattern(self, pattern: str) -> bool:
+        """Check if visualization pattern is derivable."""
+        if not pattern or ":" not in pattern:
+            return False
+
+        parts = pattern.split(":")
+        if len(parts) < 3:
+            return False
+
+        function = parts[0]
+        field = parts[1]
+
+        # Time functions
+        if function in ["tdy", "thr", "tmn", "tqr", "tyr", "tmth", "twk"]:
+            return True
+
+        # Aggregation functions
+        if function in ["sum", "avg", "cnt", "min", "max", "med"]:
+            return True
+
+        # Calculation references
+        if field.startswith("Calculation_"):
+            return True
+
+        return False
+
+    def _derive_field_from_visualization_pattern(
+        self, pattern: str, datasource_id: str
+    ) -> Optional[Dict]:
+        """Derive field from visualization pattern."""
+        parts = pattern.split(":")
+        if len(parts) < 3:
+            return None
+
+        function = parts[0]
+        field = parts[1]
+        # qualifier = parts[2]  # Not currently used
+
+        # Time functions
+        time_functions = {
+            "tdy": "day",
+            "thr": "hour",
+            "tmn": "minute",
+            "tqr": "quarter",
+            "tyr": "year",
+            "tmth": "month",
+            "twk": "week",
+        }
+
+        if function in time_functions:
+            return {
+                "name": field.lower(),
+                "field_type": "dimension_group",
+                "role": "dimension",
+                "datatype": "datetime",
+                "sql_column": field.upper(),
+                "description": f"Time dimension group for {field.lower()}",
+                "timeframes": [
+                    "raw",
+                    "time",
+                    "date",
+                    "week",
+                    "month",
+                    "quarter",
+                    "year",
+                ],
+                "primary_timeframe": time_functions[function],
+                "derivation": f"time_function:{time_functions[function]}",
+                "tableau_instance": pattern,
+                "original_tableau_instance": pattern,
+                "is_derived": True,
+                "source_type": "visualization_pattern",
+                "table_name": self._extract_table_name(datasource_id),
+            }
+
+        # Aggregation functions
+        agg_functions = {
+            "sum": "sum",
+            "avg": "average",
+            "cnt": "count",
+            "min": "min",
+            "max": "max",
+            "med": "median",
+        }
+
+        if function in agg_functions:
+            return {
+                "name": field.lower(),
+                "field_type": "measure",
+                "role": "measure",
+                "datatype": "real",
+                "sql_column": field.upper(),
+                "description": f"{agg_functions[function].title()} of {field.lower()}",
+                "aggregation": agg_functions[function],
+                "lookml_type": agg_functions[function]
+                if agg_functions[function] in ["sum", "count", "average", "min", "max"]
+                else "sum",
+                "derivation": f"aggregation:{agg_functions[function]}",
+                "tableau_instance": pattern,
+                "original_tableau_instance": pattern,
+                "is_derived": True,
+                "source_type": "visualization_pattern",
+                "table_name": self._extract_table_name(datasource_id),
+            }
+
+        # Calculation references
+        if field.startswith("Calculation_"):
+            return {
+                "name": field.lower(),
+                "field_type": "dimension",  # Default, will be corrected by calc field data
+                "role": "dimension",
+                "datatype": "string",
+                "description": f"Reference to calculated field {field.lower()}",
+                "derivation": "calculation_reference",
+                "tableau_instance": pattern,
+                "original_tableau_instance": pattern,
+                "is_derived": True,
+                "is_calculation_reference": True,
+                "source_type": "visualization_pattern",
+                "table_name": self._extract_table_name(datasource_id),
+            }
+
+        return None
 
     def _extract_table_name(self, datasource_id: str) -> str:
         """Extract table name from datasource ID for worksheet measures."""

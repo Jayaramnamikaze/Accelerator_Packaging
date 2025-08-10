@@ -189,8 +189,18 @@ class DashboardGenerator(BaseGenerator):
             main_table.get("name", "main_table") if main_table else "main_table"
         )
 
-        # Build fields array from worksheet field usage
-        fields = self.field_mapper.build_fields_from_worksheet(worksheet, explore_name)
+        # Build fields array using worksheet handler fields[] with encodings
+        fields = self._build_fields_from_worksheet_with_encodings(
+            worksheet, explore_name
+        )
+
+        # Extract YAML detection data for pivot logic
+        yaml_detection = getattr(worksheet.visualization, "yaml_detection", {})
+
+        # Build pivots from YAML detection (replaces old hardcoded logic)
+        pivots = self._build_pivots_from_yaml_detection(
+            worksheet, yaml_detection, explore_name
+        )
 
         # Use existing dual-axis detection from visualization config
         is_dual_axis = getattr(worksheet.visualization, "is_dual_axis", False)
@@ -225,6 +235,10 @@ class DashboardGenerator(BaseGenerator):
 
         if sorts:
             lookml_element["sorts"] = sorts
+
+        # Add pivots from YAML detection
+        if pivots:
+            lookml_element["pivots"] = pivots
 
         # Add default limits
         lookml_element["limit"] = 500
@@ -475,3 +489,100 @@ class DashboardGenerator(BaseGenerator):
         file_path = output_path / filename
 
         return self._write_file(content, file_path)
+
+    def _build_fields_from_worksheet_with_encodings(
+        self, worksheet, explore_name: str
+    ) -> List[str]:
+        """
+        Build fields array using worksheet handler fields[] with encoding information.
+
+        This replaces the old field mapping logic and uses the enhanced fields
+        from worksheet handler that include encoding data.
+        """
+        fields = []
+
+        # Use worksheet.fields which includes encoding data from worksheet handler
+        worksheet_fields = getattr(worksheet, "fields", [])
+
+        for field in worksheet_fields:
+            if not isinstance(field, dict):
+                continue
+
+            field_name = field.get("name", "")
+            encodings = field.get("encodings", [])
+
+            # Skip if no field name
+            if not field_name:
+                continue
+
+            # Include field if it has encodings (used in visualization)
+            if encodings:
+                # Add proper explore prefix
+                full_field_name = f"{explore_name.lower()}.{field_name}"
+                if full_field_name not in fields:
+                    fields.append(full_field_name)
+                    logger.debug(
+                        f"Added field with encodings: {field_name} (encodings: {encodings})"
+                    )
+
+        return fields
+
+    def _build_pivots_from_yaml_detection(
+        self, worksheet, yaml_detection: Dict, explore_name: str
+    ) -> List[str]:
+        """
+        Build pivots from YAML detection data.
+
+        This replaces all hardcoded pivot logic and uses the YAML rule engine
+        detection results to determine what fields should be pivoted.
+        """
+        pivots = []
+
+        # Only generate pivots if YAML detection explicitly says so
+        if not yaml_detection.get("pivot_required", False):
+            return pivots
+
+        # Get pivot field sources from YAML detection
+        pivot_field_sources = yaml_detection.get("pivot_field_source", [])
+        if not pivot_field_sources:
+            return pivots
+
+        # Process worksheet fields to find pivot candidates
+        worksheet_fields = getattr(worksheet, "fields", [])
+
+        for source in pivot_field_sources:
+            # Map YAML source types to actual field characteristics
+            if source == "columns_shelf":
+                # Look for fields that were on columns shelf (typically time dimensions)
+                for field in worksheet_fields:
+                    if not isinstance(field, dict):
+                        continue
+
+                    encodings = field.get("encodings", [])
+                    field_name = field.get("name", "")
+
+                    # Include fields that were used as column encodings
+                    if "column" in encodings or "x_axis" in encodings:
+                        full_field_name = f"{explore_name.lower()}.{field_name}"
+                        if full_field_name not in pivots:
+                            pivots.append(full_field_name)
+
+            elif source == "rows_shelf":
+                # Look for fields that were on rows shelf
+                for field in worksheet_fields:
+                    if not isinstance(field, dict):
+                        continue
+
+                    encodings = field.get("encodings", [])
+                    field_name = field.get("name", "")
+
+                    # Include fields that were used as row encodings
+                    if "row" in encodings or "y_axis" in encodings:
+                        full_field_name = f"{explore_name.lower()}.{field_name}"
+                        if full_field_name not in pivots:
+                            pivots.append(full_field_name)
+
+        logger.info(
+            f"Generated {len(pivots)} pivots from YAML detection for worksheet '{worksheet.name}': {pivots}"
+        )
+        return pivots

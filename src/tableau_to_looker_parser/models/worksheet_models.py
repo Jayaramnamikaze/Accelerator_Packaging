@@ -17,6 +17,7 @@ class ChartType(str, Enum):
     """Tableau chart/mark types."""
 
     BAR = "bar"
+    COLUMN = "column"  # Column charts (vertical bars)
     LINE = "line"
     PIE = "pie"
     SCATTER = "scatter"
@@ -67,6 +68,10 @@ class FieldReference(BaseModel):
     # Usage context
     shelf: str = Field(
         ..., description="Shelf placement: rows, columns, color, size, detail, etc."
+    )
+    encodings: List[str] = Field(
+        default_factory=list,
+        description="List of encoding types: text, color, size, tooltip, etc.",
     )
     derivation: str = Field(
         default="None", description="Tableau derivation like 'Sum', 'None', 'Avg'"
@@ -127,6 +132,11 @@ class VisualizationConfig(BaseModel):
     # Enhanced detection metadata
     enhanced_detection: Optional[Dict[str, Any]] = Field(
         None, description="Enhanced chart type detection metadata"
+    )
+
+    # YAML rule-based detection metadata
+    yaml_detection: Optional[Dict[str, Any]] = Field(
+        None, description="YAML rule-based chart type detection metadata"
     )
 
     # Raw Tableau configuration for unknown properties
@@ -219,6 +229,10 @@ class WorksheetSchema(BaseModel):
     identified_measures: List[Dict[str, Any]] = Field(
         default_factory=list,
         description="Worksheet-specific measures identified from field aggregations",
+    )
+    derived_fields: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Derived fields identified from Tableau instances (time functions, aggregations)",
     )
 
     # Processing metadata

@@ -507,6 +507,9 @@ class TableauChartRuleEngine:
                         "looker_equivalent", "looker_column"
                     ),
                     "pivot_required": rule_config.get("pivot_required", False),
+                    "fields_sources": rule_config.get("fields_sources", []),
+                    "pivot_field_source": rule_config.get("pivot_field_source", []),
+                    "pivot_selection_logic": rule_config.get("pivot_selection_logic"),
                     "is_dual_axis": context.get("has_dual_axis", False),
                 }
 
@@ -526,6 +529,8 @@ class TableauChartRuleEngine:
             "matched_rule": None,
             "looker_equivalent": "looker_column",
             "pivot_required": False,
+            "fields_sources": [],
+            "pivot_field_source": [],
             "is_dual_axis": context.get("has_dual_axis", False),
         }
 
