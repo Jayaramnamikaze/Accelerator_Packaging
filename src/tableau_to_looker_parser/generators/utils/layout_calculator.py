@@ -270,11 +270,11 @@ class LayoutCalculator:
         min_width = max(1, self.grid_columns // 3)  # 33% of screen width (8 cols)
         min_height = max(1, self.max_rows // 5)  # 20% of screen height (6 rows)
 
+        # Apply minimum sizes but preserve original positioning
         position["width"] = max(min_width, position["width"])
         position["height"] = max(min_height, position["height"])
 
-        # Ensure elements don't overflow
-        if position["col"] + position["width"] > self.grid_columns:
-            position["col"] = max(0, self.grid_columns - position["width"])
+        # Preserve original positions - don't adjust col/row to prevent overflow
+        # Allow charts to extend beyond boundaries to maintain Tableau positioning
 
         return position
