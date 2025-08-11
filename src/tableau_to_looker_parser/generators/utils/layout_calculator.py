@@ -243,7 +243,10 @@ class LayoutCalculator:
         return suggestions
 
     def calculate_looker_position(
-        self, element: DashboardElement, migration_data: Dict[str, Any]
+        self,
+        element: DashboardElement,
+        migration_data: Dict[str, Any],
+        height_based_rows: Dict[str, int] = None,
     ) -> Dict[str, int]:
         """
         Calculate clean Looker-native positioning from dashboard element.
@@ -257,13 +260,17 @@ class LayoutCalculator:
         Returns:
             Dictionary with row, col, width, height for Looker LookML
         """
+        # Use height-based row if provided, otherwise fall back to y-coordinate
+        if height_based_rows and element.element_id in height_based_rows:
+            calculated_row = height_based_rows[element.element_id]
+        else:
+            calculated_row = max(0, int(element.position.y * 20))
+
         position = {
-            "row": max(0, int(element.position.y * 20)),
+            "row": calculated_row,
             "col": max(0, int(element.position.x * self.grid_columns)),
             "width": max(1, int(element.position.width * self.grid_columns)),
-            "height": max(
-                1, int(element.position.height * 20)
-            ),  # Use consistent scaling with other methods
+            "height": max(1, int(element.position.height * 20)),
         }
 
         # Apply manual dashboard minimum sizes: width=6, height=5 for donut charts
@@ -273,3 +280,60 @@ class LayoutCalculator:
         )  # Match manual dashboard minimum
 
         return position
+
+    def calculate_height_based_rows(self, elements: list) -> Dict[str, int]:
+        """
+        Calculate proper row positioning based on element heights to avoid overlapping.
+
+        Args:
+            elements: List of dashboard elements with position information
+
+        Returns:
+            Dictionary mapping element_id to calculated row position
+        """
+        if not elements:
+            return {}
+
+        # Group elements by their y-coordinate (same visual row)
+        y_tolerance = 0.05  # Elements within 5% y-difference are considered same row
+        row_groups = []
+
+        for element in elements:
+            y_pos = element.position.y
+
+            # Find existing group with similar y-coordinate
+            found_group = False
+            for group in row_groups:
+                if abs(group[0].position.y - y_pos) <= y_tolerance:
+                    group.append(element)
+                    found_group = True
+                    break
+
+            # Create new group if no match found
+            if not found_group:
+                row_groups.append([element])
+
+        # Sort groups by y-coordinate
+        row_groups.sort(key=lambda group: group[0].position.y)
+
+        # Calculate cumulative row positions based on heights
+        element_rows = {}
+        current_row = 0
+
+        for group in row_groups:
+            # Calculate heights for all elements in this group
+            group_heights = []
+            for elem in group:
+                calculated_height = max(5, int(elem.position.height * 20))
+                group_heights.append(calculated_height)
+
+            # All elements in same group get same row value
+            max_height_in_group = max(group_heights)
+
+            for elem in group:
+                element_rows[elem.element_id] = current_row
+
+            # Next row starts after this group's max height + spacing
+            current_row += max_height_in_group + 2  # +2 for proper spacing
+
+        return element_rows
