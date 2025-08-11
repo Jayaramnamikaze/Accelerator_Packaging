@@ -611,9 +611,17 @@ class WorksheetHandler(BaseHandler):
         calculated = []
 
         for field in fields:
-            # Check if field looks like a calculated field
-            original_name = field.get("original_name", "")
-            if original_name.startswith("[Calculation_"):
+            # Primary check: if field has a formula, it's a calculated field
+            if field.get("calculation", {}).get("original_formula"):
+                calculated.append(field["name"])
+            # Check for [Calculation_ pattern
+            elif field.get("original_name", "").startswith("[Calculation_"):
+                calculated.append(field["name"])
+            # Check for other calculated field patterns like [Rolling, [Model Name, etc.
+            elif field.get("original_name", "").startswith("[") and (
+                "(copy)" in field.get("original_name", "")
+                or "_copy_" in field.get("original_name", "")
+            ):
                 calculated.append(field["name"])
             # Check tableau instance for calculated field patterns
             elif "calculation" in field.get("tableau_instance", "").lower():

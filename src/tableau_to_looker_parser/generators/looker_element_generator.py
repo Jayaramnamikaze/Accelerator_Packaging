@@ -156,9 +156,6 @@ class LookerElementGenerator:
         """
         fields = []
 
-        if worksheet.clean_name == "cd_st":
-            print(f"Worksheet {worksheet.clean_name} has source {source}")
-
         # Get mapping criteria for this source
         mapping = self.source_mapping.get(source)
         if not mapping:
@@ -337,8 +334,10 @@ class LookerElementGenerator:
         # Initialize filter processor with explore context
         filter_processor = FilterProcessor(explore_name=self.explore_name)
 
-        # Convert worksheet filters to LookML element filters
-        filters = filter_processor.process_worksheet_filters(worksheet.filters)
+        # Convert worksheet filters to LookML element filters, excluding calculated fields
+        filters = filter_processor.process_worksheet_filters(
+            worksheet.filters, calculated_fields=worksheet.calculated_fields
+        )
 
         # Filter out empty values to avoid validation issues
         return {k: v for k, v in filters.items() if v.strip()}

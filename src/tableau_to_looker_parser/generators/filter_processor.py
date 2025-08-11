@@ -25,23 +25,34 @@ class FilterProcessor:
         self.config = config or FilterMappingConfig()
 
     def process_worksheet_filters(
-        self, worksheet_filters: List[Dict]
+        self,
+        worksheet_filters: List[Dict],
+        calculated_fields: Optional[List[str]] = None,
     ) -> Dict[str, str]:
         """
         Convert worksheet filters to LookML element filters.
 
         Args:
             worksheet_filters: List of filter dicts from worksheet JSON
+            calculated_fields: List of calculated field names to exclude from filtering
 
         Returns:
             Dict mapping field keys to filter values for LookML
         """
         lookml_filters = {}
+        calculated_fields = calculated_fields or []
 
         for filter_data in worksheet_filters:
             try:
                 # Parse Tableau filter with Pydantic validation
                 tableau_filter = TableauFilter(**filter_data)
+
+                # Skip calculated fields if specified
+                if calculated_fields and tableau_filter.field_name in calculated_fields:
+                    logger.debug(
+                        f"Skipping calculated field filter: {tableau_filter.field_name}"
+                    )
+                    continue
 
                 # Convert to LookML filter
                 lookml_filter = self._convert_filter(tableau_filter)
