@@ -247,6 +247,7 @@ class LayoutCalculator:
         element: DashboardElement,
         migration_data: Dict[str, Any],
         height_based_rows: Dict[str, int] = None,
+        standardized_widths: Dict[str, int] = None,
     ) -> Dict[str, int]:
         """
         Calculate clean Looker-native positioning from dashboard element.
@@ -273,8 +274,12 @@ class LayoutCalculator:
             "height": max(1, int(element.position.height * 20)),
         }
 
-        # Apply manual dashboard minimum sizes: width=6, height=5 for donut charts
-        position["width"] = max(6, position["width"])  # Match manual dashboard minimum
+        # Use standardized width if provided, otherwise apply minimum
+        if standardized_widths and element.element_id in standardized_widths:
+            position["width"] = standardized_widths[element.element_id]
+        else:
+            position["width"] = max(6, position["width"])  # Fallback minimum
+
         position["height"] = max(
             5, position["height"]
         )  # Match manual dashboard minimum
@@ -337,3 +342,58 @@ class LayoutCalculator:
             current_row += max_height_in_group + 2  # +2 for proper spacing
 
         return element_rows
+
+    def calculate_standardized_widths(self, elements: list) -> Dict[str, int]:
+        """
+        Standardize all rows to full width (24 columns) by calculating element widths per row.
+
+        Args:
+            elements: List of dashboard elements with position information
+
+        Returns:
+            Dictionary mapping element_id to standardized width
+        """
+        if not elements:
+            return {}
+
+        # Group elements by their y-coordinate (same visual row)
+        y_tolerance = 0.05  # Elements within 5% y-difference are considered same row
+        row_groups = []
+
+        for element in elements:
+            y_pos = element.position.y
+
+            # Find existing group with similar y-coordinate
+            found_group = False
+            for group in row_groups:
+                if abs(group[0].position.y - y_pos) <= y_tolerance:
+                    group.append(element)
+                    found_group = True
+                    break
+
+            # Create new group if no match found
+            if not found_group:
+                row_groups.append([element])
+
+        element_widths = {}
+
+        for group in row_groups:
+            num_elements = len(group)
+
+            if num_elements == 1:
+                # Single element gets full width
+                element_widths[group[0].element_id] = 24
+            else:
+                # Multiple elements share width equally
+                width_per_element = 24 // num_elements
+                remaining_width = 24 % num_elements
+
+                # Sort elements by x position for consistent assignment
+                group.sort(key=lambda elem: elem.position.x)
+
+                for i, element in enumerate(group):
+                    # Distribute remaining width to first few elements
+                    extra_width = 1 if i < remaining_width else 0
+                    element_widths[element.element_id] = width_per_element + extra_width
+
+        return element_widths
