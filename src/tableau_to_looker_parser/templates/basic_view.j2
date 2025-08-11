@@ -13,9 +13,33 @@ view: {{ view_name }} {
   description: "{{ view.description }}"
   {% endif %}
 
+  # Date dimension groups
+  {% if has_dimensions %}
+  {% for dimension in dimensions %}
+  {% if dimension.field_type == 'date' or dimension.field_type == 'datetime' or dimension.field_type == 'time' %}
+
+  dimension_group: {{ dimension.name | clean_name }} {
+    type: time
+    timeframes: [raw, time, date, week, month, quarter, year]
+    sql: ${TABLE}.{{ (dimension.sql_column or dimension.name) | sql_column }} ;;
+    {% if dimension.description %}
+    description: "{{ dimension.description | escape_quotes }}"
+    {% endif %}
+    {% if dimension.hidden %}
+    hidden: yes
+    {% endif %}
+    {% if dimension.label %}
+    label: "{{ dimension.label | escape_quotes }}"
+    {% endif %}
+  }
+  {% endif %}
+  {% endfor %}
+  {% endif %}
+
   # Dimensions
   {% if has_dimensions %}
   {% for dimension in dimensions %}
+  {% if not (dimension.field_type == 'date' or dimension.field_type == 'datetime' or dimension.field_type == 'time') %}
 
   dimension: {{ dimension.name | clean_name }} {
     {% if dimension.description %}
@@ -27,18 +51,24 @@ view: {{ view_name }} {
     type: number
     {% elif dimension.field_type == 'real' %}
     type: number
+
     {% elif dimension.field_type == 'date' %}
     type: date
     {% elif dimension.field_type == 'datetime' %}
     type: date_time
     {% elif dimension.field_type == 'time' %}
     type: time
+
     {% elif dimension.field_type == 'boolean' %}
     type: yesno
     {% else %}
     type: string
     {% endif %}
-    sql: ${TABLE}.{{ (dimension.sql_column or dimension.name) | sql_column }} ;;
+    {% if dimension.sql_column %}
+    sql: ${TABLE}.{{ dimension.sql_column | sql_column }} ;;
+    {% else %}
+    sql: ${TABLE}.{{ dimension.name | sql_column }} ;;
+    {% endif %}
     {% if dimension.hidden %}
     hidden: yes
     {% endif %}
@@ -48,19 +78,6 @@ view: {{ view_name }} {
     {% if dimension.group_label %}
     group_label: "{{ dimension.group_label | escape_quotes }}"
     {% endif %}
-  }
-  {% endfor %}
-
-  # Date dimension groups
-  {% for dimension in dimensions %}
-  {% if dimension.type == 'date' or dimension.type == 'datetime' %}
-
-  dimension_group: {{ dimension.name | clean_name }} {
-    type: time
-    timeframes: [raw, time, date, week, month, quarter, year]
-    sql: ${TABLE}.{{ (dimension.sql_column or dimension.name) | sql_column }} ;;
-    {% if dimension.description %}description: "{{ dimension.description | escape_quotes }}"{% endif %}
-    {% if dimension.hidden %}hidden: yes{% endif %}
   }
   {% endif %}
   {% endfor %}
@@ -145,12 +162,14 @@ view: {{ view_name }} {
     {% if measure.description %}
     description: "{{ measure.description | escape_quotes }}"
     {% endif %}
+    {% if measure.dimension_reference %}
+    {# Two-step pattern: measure references hidden dimension #}
+    type: {{ measure.aggregation.value if measure.aggregation.value else 'sum' }}
+    sql: ${ {{- measure.dimension_reference -}} } ;;
+    {% else %}
+    {# Legacy pattern: measure references table column directly #}
     type: number
     sql: ${TABLE}.{{ (measure.sql_column or measure.name) | sql_column }} ;;
-    {% if measure.aggregation == 'count' and not measure.sql_column %}
-    {# Count measures without SQL column don't need sql parameter #}
-    {% else %}
-    {# All other measures use the column SQL #}
     {% endif %}
     {% if measure.value_format %}
     value_format: "{{ measure.value_format }}"

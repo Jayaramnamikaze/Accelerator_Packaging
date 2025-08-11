@@ -1,0 +1,183 @@
+<svg viewBox="0 0 1000 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="tableauGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#E97627;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#D4661B;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="jsonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4CAF50;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#388E3C;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="lookerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="processGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF9800;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#F57C00;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Drop shadow filter -->
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+      <feOffset dx="2" dy="4" result="offset" />
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.3"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1000" height="400" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="500" y="30" text-anchor="middle" fill="#2c3e50" font-size="24" font-weight="bold" font-family="Arial, sans-serif">
+    Tableau to Looker Migration Workflow
+  </text>
+
+  <!-- Step 1: Tableau XML -->
+  <g transform="translate(50, 80)">
+    <!-- Shadow -->
+    <rect x="2" y="4" width="160" height="100" rx="12" fill="rgba(233,118,39,0.2)" filter="url(#shadow)"/>
+    <!-- Main box -->
+    <rect x="0" y="0" width="160" height="100" rx="12" fill="url(#tableauGrad)" stroke="#D4661B" stroke-width="2"/>
+
+    <!-- Icon -->
+    <circle cx="80" cy="35" r="18" fill="rgba(255,255,255,0.2)"/>
+    <text x="80" y="42" text-anchor="middle" fill="white" font-size="16" font-weight="bold">📊</text>
+
+    <!-- Text -->
+    <text x="80" y="65" text-anchor="middle" fill="white" font-size="14" font-weight="bold">Tableau XML</text>
+    <text x="80" y="82" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="10">.twb / .twbx files</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <g transform="translate(210, 120)">
+    <path d="M 0 10 L 40 10" stroke="#667eea" stroke-width="3" fill="none" marker-end="url(#arrowhead)"/>
+    <text x="20" y="0" text-anchor="middle" fill="#667eea" font-size="11" font-weight="bold">Parse XML</text>
+  </g>
+
+  <!-- Step 2: JSON -->
+  <g transform="translate(270, 80)">
+    <!-- Shadow -->
+    <rect x="2" y="4" width="160" height="100" rx="12" fill="rgba(76,175,80,0.2)" filter="url(#shadow)"/>
+    <!-- Main box -->
+    <rect x="0" y="0" width="160" height="100" rx="12" fill="url(#jsonGrad)" stroke="#388E3C" stroke-width="2"/>
+
+    <!-- Icon -->
+    <circle cx="80" cy="35" r="18" fill="rgba(255,255,255,0.2)"/>
+    <text x="80" y="42" text-anchor="middle" fill="white" font-size="16" font-weight="bold">{ }</text>
+
+    <!-- Text -->
+    <text x="80" y="65" text-anchor="middle" fill="white" font-size="14" font-weight="bold">JSON Data</text>
+    <text x="80" y="82" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="10">Structured metadata</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <g transform="translate(430, 120)">
+    <path d="M 0 10 L 40 10" stroke="#667eea" stroke-width="3" fill="none" marker-end="url(#arrowhead)"/>
+    <text x="20" y="0" text-anchor="middle" fill="#667eea" font-size="11" font-weight="bold">Transform</text>
+  </g>
+
+  <!-- Step 3: Looker Generate -->
+  <g transform="translate(490, 80)">
+    <!-- Shadow -->
+    <rect x="2" y="4" width="160" height="100" rx="12" fill="rgba(255,152,0,0.2)" filter="url(#shadow)"/>
+    <!-- Main box -->
+    <rect x="0" y="0" width="160" height="100" rx="12" fill="url(#processGrad)" stroke="#F57C00" stroke-width="2"/>
+
+    <!-- Icon -->
+    <circle cx="80" cy="35" r="18" fill="rgba(255,255,255,0.2)"/>
+    <text x="80" y="42" text-anchor="middle" fill="white" font-size="16" font-weight="bold">⚙️</text>
+
+    <!-- Text -->
+    <text x="80" y="65" text-anchor="middle" fill="white" font-size="14" font-weight="bold">Looker Generate</text>
+    <text x="80" y="82" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="10">Conversion engine</text>
+  </g>
+
+  <!-- Arrow 3 -->
+  <g transform="translate(650, 120)">
+    <path d="M 0 10 L 40 10" stroke="#667eea" stroke-width="3" fill="none" marker-end="url(#arrowhead)"/>
+    <text x="20" y="0" text-anchor="middle" fill="#667eea" font-size="11" font-weight="bold">Generate</text>
+  </g>
+
+  <!-- Step 4: LookML Files -->
+  <g transform="translate(710, 80)">
+    <!-- Shadow -->
+    <rect x="2" y="4" width="160" height="100" rx="12" fill="rgba(102,126,234,0.2)" filter="url(#shadow)"/>
+    <!-- Main box -->
+    <rect x="0" y="0" width="160" height="100" rx="12" fill="url(#lookerGrad)" stroke="#764ba2" stroke-width="2"/>
+
+    <!-- Icon -->
+    <circle cx="80" cy="35" r="18" fill="rgba(255,255,255,0.2)"/>
+    <text x="80" y="42" text-anchor="middle" fill="white" font-size="16" font-weight="bold">📄</text>
+
+    <!-- Text -->
+    <text x="80" y="65" text-anchor="middle" fill="white" font-size="14" font-weight="bold">LookML Files</text>
+    <text x="80" y="82" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="10">.model / .view files</text>
+  </g>
+
+  <!-- Arrow marker definition -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7"
+            refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#667eea"/>
+    </marker>
+  </defs>
+
+  <!-- Process Details Below -->
+  <g transform="translate(50, 220)">
+    <rect x="0" y="0" width="800" height="150" rx="15" fill="#f8f9fa" stroke="#e9ecef" stroke-width="2"/>
+
+    <!-- Process Details Title -->
+    <text x="400" y="25" text-anchor="middle" fill="#2c3e50" font-size="16" font-weight="bold">Detailed Process Flow</text>
+
+    <!-- Step 1 Details -->
+    <g transform="translate(20, 40)">
+      <circle cx="10" cy="10" r="8" fill="#E97627"/>
+      <text x="10" y="15" text-anchor="middle" fill="white" font-size="10" font-weight="bold">1</text>
+      <text x="25" y="10" fill="#2c3e50" font-size="12" font-weight="bold">XML to JSON</text>
+      <text x="25" y="25" fill="#6c757d" font-size="10">• Parse Tableau workbook XML structure</text>
+      <text x="25" y="40" fill="#6c757d" font-size="10">• Extract data sources, calculations, filters</text>
+      <text x="25" y="55" fill="#6c757d" font-size="10">• Convert to structured JSON format</text>
+    </g>
+
+    <!-- Step 2 Details -->
+    <g transform="translate(220, 40)">
+      <circle cx="10" cy="10" r="8" fill="#4CAF50"/>
+      <text x="10" y="15" text-anchor="middle" fill="white" font-size="10" font-weight="bold">2</text>
+      <text x="25" y="10" fill="#2c3e50" font-size="12" font-weight="bold">JSON Processing</text>
+      <text x="25" y="25" fill="#6c757d" font-size="10">• Validate and clean JSON data</text>
+      <text x="25" y="40" fill="#6c757d" font-size="10">• Map Tableau concepts to Looker</text>
+      <text x="25" y="55" fill="#6c757d" font-size="10">• Prepare for LookML generation</text>
+    </g>
+
+    <!-- Step 3 Details -->
+    <g transform="translate(420, 40)">
+      <circle cx="10" cy="10" r="8" fill="#FF9800"/>
+      <text x="10" y="15" text-anchor="middle" fill="white" font-size="10" font-weight="bold">3</text>
+      <text x="25" y="10" fill="#2c3e50" font-size="12" font-weight="bold">Looker Generate</text>
+      <text x="25" y="25" fill="#6c757d" font-size="10">• Apply conversion rules and templates</text>
+      <text x="25" y="40" fill="#6c757d" font-size="10">• Generate model and view definitions</text>
+      <text x="25" y="55" fill="#6c757d" font-size="10">• Create dashboard configurations</text>
+    </g>
+
+    <!-- Step 4 Details -->
+    <g transform="translate(620, 40)">
+      <circle cx="10" cy="10" r="8" fill="#667eea"/>
+      <text x="10" y="15" text-anchor="middle" fill="white" font-size="10" font-weight="bold">4</text>
+      <text x="25" y="10" fill="#2c3e50" font-size="12" font-weight="bold">LookML Output</text>
+      <text x="25" y="25" fill="#6c757d" font-size="10">• Generate .model and .view files</text>
+      <text x="25" y="40" fill="#6c757d" font-size="10">• Create dashboard .dashboard files</text>
+      <text x="25" y="55" fill="#6c757d" font-size="10">• Validate LookML syntax</text>
+    </g>
+  </g>
+</svg>
