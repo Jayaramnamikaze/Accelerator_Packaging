@@ -262,9 +262,15 @@ class WorksheetHandler(BaseHandler):
                         "pivot_selection_logic": detection_result.get(
                             "pivot_selection_logic"
                         ),
+                        "stacked_type": detection_result.get("stacked_type", False),
                     },
                 }
             )
+            # Set stacked flag only when the matched rule explicitly indicates stacking
+            if detection_result.get("matched_rule") and detection_result.get(
+                "stacked_type", False
+            ):
+                viz_config["stacked"] = True
             logger.info(
                 f"YAML detection for '{worksheet_data.get('name')}': "
                 f"{viz_config.get('chart_type')} (rule: {detection_result.get('matched_rule')})"

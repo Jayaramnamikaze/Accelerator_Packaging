@@ -99,6 +99,12 @@ class LookerElementGenerator:
         # Add position information
         element.update(position)
 
+        try:
+            if bool(getattr(worksheet.visualization, "stacked", False)):
+                element["stacking"] = "normal"
+        except Exception:
+            pass
+
         logger.debug(
             f"Generated {looker_chart_type} element for worksheet {worksheet.name}"
         )
