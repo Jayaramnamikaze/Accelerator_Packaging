@@ -504,6 +504,7 @@ class TableauChartRuleEngine:
                     "pivot_field_source": rule_config.get("pivot_field_source", []),
                     "pivot_selection_logic": rule_config.get("pivot_selection_logic"),
                     "is_dual_axis": context.get("has_dual_axis", False),
+                    "stacked_type": rule_config.get("stacked_type", False),
                 }
 
                 self.logger.debug(
