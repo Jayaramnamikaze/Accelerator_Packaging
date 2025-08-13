@@ -80,7 +80,9 @@ class LookerElementGenerator:
         if pivots:
             element["pivots"] = pivots
 
-        sorts = self._generate_sorts(worksheet, looker_chart_type)
+        sorts = self._generate_sorts(
+            worksheet, element["fields"], pivots, looker_chart_type
+        )
         if sorts:
             element["sorts"] = sorts
 
@@ -322,30 +324,170 @@ class LookerElementGenerator:
             # Default behavior: return all fields
             return source_fields
 
-    def _generate_sorts(self, worksheet: WorksheetSchema, chart_type: str) -> List[str]:
+    def _generate_sorts(
+        self,
+        worksheet: WorksheetSchema,
+        fields: List[str],
+        pivot_fields: List[str],
+        chart_type: str,
+    ) -> List[str]:
         """
-        Clean implementation: Generate sorts using worksheet handler fields with encodings.
+        Priority-based sort generation: TIME → PIVOT → ROW DIMENSIONS → MEASURES
+
+        Args:
+            worksheet: Worksheet schema with field metadata
+            fields: All fields being used in the visualization
+            pivot_fields: Fields that are pivoted (become column headers)
+            chart_type: Chart type for special sorting rules
+        """
+        return self._apply_sort_priority_hierarchy(
+            worksheet, fields, pivot_fields, chart_type
+        )
+
+    def _apply_sort_priority_hierarchy(
+        self,
+        worksheet: WorksheetSchema,
+        fields: List[str],
+        pivot_fields: List[str],
+        chart_type: str,
+    ) -> List[str]:
+        """
+        Apply sort priority hierarchy using actual field metadata: TIME → PIVOT → ROW DIMENSIONS → MEASURES
+
+        Args:
+            worksheet: Worksheet schema with field metadata
+            fields: All fields being used in the visualization
+            pivot_fields: Fields that are pivoted (become column headers)
+            chart_type: Chart type for special sorting rules
+
+        Returns:
+            Ordered list of sort specifications
         """
         sorts = []
+        processed_fields = set()
 
         if chart_type == "looker_pie":
             # Pie charts: sort by first measure descending
-            for field in worksheet.fields:
-                if isinstance(field, dict) and field.get("role") == "measure":
-                    field_name = field.get("name", "")
-                    if field_name:
-                        sorts.append(f"{self.explore_name}.{field_name} desc 0")
-                        break
-        else:
-            # Other charts: sort by dimensions then measures
-            for field in worksheet.fields:
-                if isinstance(field, dict):
-                    field_name = field.get("name", "")
-                    role = field.get("role", "")
-                    if field_name and role in ["dimension", "measure"]:
-                        sorts.append(f"{self.explore_name}.{field_name}")
+            measure_fields = self._get_measure_fields_from_list(worksheet, fields)
+            if measure_fields:
+                return [f"{measure_fields[0]} desc 0"]
+            return []
+
+        # 1. TIME FIELDS (chronological flow) - highest priority
+        time_fields = self._get_time_fields_from_list(worksheet, fields)
+        for field in time_fields:
+            sorts.append(field)
+            processed_fields.add(field)
+
+        # 2. PIVOT FIELDS (column organization) - second priority
+        for field in pivot_fields:
+            if field not in processed_fields:
+                sorts.append(field)
+                processed_fields.add(field)
+
+        # 3. ROW DIMENSIONS (row organization) - third priority
+        row_dimension_fields = self._get_row_dimension_fields_from_list(
+            worksheet, fields
+        )
+        for field in row_dimension_fields:
+            if field not in processed_fields:
+                sorts.append(field)
+                processed_fields.add(field)
+
+        # 4. MEASURES (value ordering) - lowest priority, descending
+        measure_fields = self._get_measure_fields_from_list(worksheet, fields)
+        for field in measure_fields:
+            if field not in processed_fields:
+                sorts.append(f"{field} desc")
+                processed_fields.add(field)
 
         return sorts
+
+    def _get_time_fields_from_list(
+        self, worksheet: WorksheetSchema, fields: List[str]
+    ) -> List[str]:
+        """Get time fields by matching with worksheet field metadata."""
+        time_fields = []
+        for field_name in fields:
+            # Extract field name without explore prefix
+            clean_field_name = field_name.split(".")[-1]
+
+            # Find matching worksheet field
+            for worksheet_field in worksheet.fields:
+                if (
+                    hasattr(worksheet_field, "name")
+                    and worksheet_field.name in clean_field_name
+                ):
+                    if (
+                        hasattr(worksheet_field, "suggested_type")
+                        and worksheet_field.suggested_type == "dimension_group"
+                    ):
+                        time_fields.append(field_name)
+                        break
+                    elif (
+                        hasattr(worksheet_field, "role")
+                        and worksheet_field.role == "dimension"
+                        and hasattr(worksheet_field, "datatype")
+                        and worksheet_field.datatype in ["date", "datetime"]
+                    ):
+                        time_fields.append(field_name)
+                        break
+
+        return time_fields
+
+    def _get_measure_fields_from_list(
+        self, worksheet: WorksheetSchema, fields: List[str]
+    ) -> List[str]:
+        """Get measure fields by matching with worksheet field metadata."""
+        measure_fields = []
+        for field_name in fields:
+            # Extract field name without explore prefix
+            clean_field_name = field_name.split(".")[-1]
+
+            # Find matching worksheet field
+            for worksheet_field in worksheet.fields:
+                if (
+                    hasattr(worksheet_field, "name")
+                    and worksheet_field.name in clean_field_name
+                ):
+                    if (
+                        hasattr(worksheet_field, "role")
+                        and worksheet_field.role == "measure"
+                    ):
+                        measure_fields.append(field_name)
+                        break
+
+        return measure_fields
+
+    def _get_row_dimension_fields_from_list(
+        self, worksheet: WorksheetSchema, fields: List[str]
+    ) -> List[str]:
+        """Get row dimension fields by matching with worksheet field metadata."""
+        row_dimension_fields = []
+        for field_name in fields:
+            # Extract field name without explore prefix
+            clean_field_name = field_name.split(".")[-1]
+
+            # Find matching worksheet field
+            for worksheet_field in worksheet.fields:
+                if (
+                    hasattr(worksheet_field, "name")
+                    and worksheet_field.name in clean_field_name
+                ):
+                    if (
+                        hasattr(worksheet_field, "role")
+                        and worksheet_field.role == "dimension"
+                        and hasattr(worksheet_field, "shelf")
+                        and worksheet_field.shelf == "rows"
+                        and not (
+                            hasattr(worksheet_field, "suggested_type")
+                            and worksheet_field.suggested_type == "dimension_group"
+                        )
+                    ):
+                        row_dimension_fields.append(field_name)
+                        break
+
+        return row_dimension_fields
 
     def _generate_filters(self, worksheet: WorksheetSchema) -> Dict[str, str]:
         """Generate filters from worksheet filter configuration using clean Pydantic processor."""
