@@ -72,7 +72,7 @@ class LookerElementGenerator:
             "column_limit": 50,
         }
 
-        if worksheet.name == "CD st":
+        if worksheet.name == "CD detail":
             print(f"Worksheet {worksheet.name} has styling: {worksheet.styling}")
 
         # Add optional components based on YAML metadata

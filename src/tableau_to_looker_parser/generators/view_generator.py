@@ -122,7 +122,6 @@ class ViewGenerator(BaseGenerator):
 
         actual_table_name = actual_table["name"]
 
-
         table_dimensions = [
             dim
             for dim in all_dimensions
@@ -132,7 +131,6 @@ class ViewGenerator(BaseGenerator):
 
         # Filter measures for this specific table
         table_measures = [
-
             measure
             for measure in all_measures
             if measure.get("table_name") == actual_table_name
@@ -151,13 +149,11 @@ class ViewGenerator(BaseGenerator):
         is_derived_table = False
 
         for calc_field in all_calculated_fields:
-
             # Include calculated fields with matching table_name or with placeholder "__UNASSIGNED_TABLE__"
             if (
                 calc_field.get("table_name") == actual_table_name
                 or calc_field.get("table_name") == "__UNASSIGNED_TABLE__"
             ):
-
                 # Convert AST to LookML SQL using our converter
 
                 converted_field = self._convert_calculated_field(calc_field, view_name)
@@ -188,13 +184,11 @@ class ViewGenerator(BaseGenerator):
                     else:
                         table_calculated_fields.append(converted_field)
 
-
         # Build view data - combine dimensions including hidden ones from calculated fields
         all_dimensions = (
             table_dimensions
             + table_calculated_dimensions  # Hidden dimensions from calculated field two-step pattern
         )
-
 
         view_data = {
             "name": view_name,
@@ -202,11 +196,9 @@ class ViewGenerator(BaseGenerator):
             "dimensions": all_dimensions,  # All dimensions including hidden ones from calculated fields
             "measures": table_measures,
             "calculated_fields": table_calculated_fields,
-
             "calculated_dimensions": table_calculated_dimensions,
             "derived_table_sql": derived_table_sql,  # <-- NEW
             "is_derived_table": is_derived_table,  # <-- NEW
-
         }
 
         return self._create_view_file(view_data, output_dir)
