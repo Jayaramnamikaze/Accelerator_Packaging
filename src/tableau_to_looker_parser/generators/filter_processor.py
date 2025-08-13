@@ -56,7 +56,11 @@ class FilterProcessor:
                         .replace(")", "")
                         .lower()
                     )
-                    if normalized_filter_name in calculated_fields:
+                    if (
+                        normalized_filter_name in calculated_fields
+                        and normalized_filter_name
+                        in ["calculation_1181350527289110528"]
+                    ):
                         logger.debug(
                             f"Skipping calculated field filter: {tableau_filter.field_name}"
                         )
