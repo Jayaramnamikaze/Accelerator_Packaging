@@ -27,7 +27,7 @@ dashboard_test_output/
 bar_charts_output/
 unified_label_test_output/
 comprehensive_test/
-connected_devices_dashboard/
 connected_devices_test_output/
+connected_devices_dashboard/Intraday_Sales.twb
 test_echarts_output/
 comprehensive_dashboard_test_output/
