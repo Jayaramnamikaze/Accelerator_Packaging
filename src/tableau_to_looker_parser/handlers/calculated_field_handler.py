@@ -197,6 +197,8 @@ class CalculatedFieldHandler(BaseHandler):
                 "ast_nodes_count": parse_result.ast_nodes_count or 0,
                 "tokens_count": parse_result.tokens_count or 0,
             },
+            "datasource_id": data.get("datasource_id"),
+            "local_name": data.get("raw_name"),
         }
 
         logger.debug(
