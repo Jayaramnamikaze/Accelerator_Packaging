@@ -38,6 +38,7 @@ view: {{ view_name }} {
     {% if dimension.derivation and dimension.derivation.startswith('time_function:') %}
     # Derived from Tableau time function: {{ dimension.original_tableau_instance }}
     {% endif %}
+    order_by_field: {{ dimension.name | clean_name }}_raw
   }
 
   dimension: {{ dimension.name | clean_name }}_hour_formatted {
