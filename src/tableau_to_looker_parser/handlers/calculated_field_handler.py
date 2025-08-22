@@ -109,6 +109,8 @@ class CalculatedFieldHandler(BaseHandler):
         # Extract basic field information
         # Prefer user-friendly caption/label over auto-generated Tableau ID
         user_caption = data.get("caption") or data.get("label")
+        if user_caption == "Rolling 24":
+            print(user_caption)
         if user_caption:
             # Use caption for clean field name (convert to snake_case for LookML compatibility)
             field_name = user_caption.lower().replace(" ", "_").replace("-", "_")

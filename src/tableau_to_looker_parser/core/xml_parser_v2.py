@@ -312,6 +312,9 @@ class TableauXMLParserV2:
                 "is_internal": self._is_internal_field(col),
             }
 
+            if col.get("caption") == "Rolling 24":
+                print(col.get("caption"))
+
             # Check for calculations (CALCULATED FIELDS)
             calc_element = col.find("calculation")
             if calc_element is not None:
