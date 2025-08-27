@@ -44,7 +44,7 @@ class DimensionHandler(BaseHandler):
         semantic_role = data.get("semantic_role")
 
         # Don't handle parameters - they go to ParameterHandler
-        if param_type:
+        if param_type or data.get("param-domain-type"):
             return 0.0
 
         # Check if this has a calculation - if so, defer to CalculatedFieldHandler
