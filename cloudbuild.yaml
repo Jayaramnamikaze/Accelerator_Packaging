@@ -62,9 +62,8 @@ steps:
       - >
         curl -LsSf https://astral.sh/uv/install.sh | sh
 
-        export CARGO_PATH="/root/.cargo/bin:$$PATH"
-        export PATH="$$CARGO_PATH"
-
+        # The uv installer should handle PATH automatically
+        # No need to export PATH
 
         # Install twine
 
