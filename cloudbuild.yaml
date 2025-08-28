@@ -62,7 +62,8 @@ steps:
       - >
         curl -LsSf https://astral.sh/uv/install.sh | sh
 
-        export PATH="/root/.cargo/bin:$$PATH"
+        export CARGO_PATH="/root/.cargo/bin:$$PATH"
+        export PATH="$$CARGO_PATH"
 
 
         # Install twine
