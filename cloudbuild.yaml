@@ -86,6 +86,7 @@ substitutions:
   _REGION: us-central1
   _REPO_NAME: Packages for tableau-to-looker-parser
   VERSION: "0.0.0"
+  PATH: ""  # Empty string - let shell use actual PATH env var
 timeout: 1200s
 options:
   logging: CLOUD_LOGGING_ONLY
