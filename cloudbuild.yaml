@@ -89,3 +89,4 @@ substitutions:
 timeout: 1200s
 options:
   logging: CLOUD_LOGGING_ONLY
+  substitution_option: ALLOW_LOOSE  # 🔧 ADDITIONAL FIX: Allow loose substitutions
