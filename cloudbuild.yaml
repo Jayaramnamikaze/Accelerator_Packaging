@@ -8,21 +8,21 @@ steps:
         # Get version from git tag
         if [ -n "${TAG_NAME}" ]; then
           # If triggered by a tag, use tag name (remove 'v' prefix if present)
-          VERSION=$(echo "${TAG_NAME}" | sed 's/^v//')
+          VERSION_FROM_TAG=$(echo "${TAG_NAME}" | sed 's/^v//')
         else
           # If not triggered by tag, use git describe
           git fetch --unshallow --tags || git fetch --tags
-          VERSION=$(git describe --tags --dirty --always)
+          VERSION_FROM_TAG=$(git describe --tags --dirty --always)
         fi
 
-        echo "Using version: $VERSION"
-        echo $VERSION > /workspace/version.txt
+        echo "Using version: $$VERSION_FROM_TAG"
+        echo $$VERSION_FROM_TAG > /workspace/version.txt
   - name: python:3.11-slim
     entrypoint: bash
     args:
       - -c
       - |
-        VERSION=$(cat /workspace/version.txt)
+        VERSION_FROM_TAG=$(cat /workspace/version.txt)
 
         # Install dependencies for file manipulation
         apt-get update && apt-get install -y sed
@@ -31,13 +31,13 @@ steps:
         if grep -q 'dynamic = \["version"\]' pyproject.toml; then
           # If using dynamic versioning, create a simple version file
           mkdir -p src/your_package
-          echo "__version__ = '$VERSION'" > src/your_package/_version.py
+          echo "__version__ = '$$VERSION_FROM_TAG'" > src/your_package/_version.py
         else
           # Update static version in pyproject.toml
-          sed -i "s/version = .*/version = \"$VERSION\"/" pyproject.toml
+          sed -i "s/version = .*/version = \"$$VERSION_FROM_TAG\"/" pyproject.toml
         fi
 
-        echo "Updated version to: $VERSION"
+        echo "Updated version to: $$VERSION_FROM_TAG"
         grep -A5 -B5 "version" pyproject.toml || echo "Version file created"
   - name: python:3.11-slim
     entrypoint: bash
@@ -46,8 +46,6 @@ steps:
       - |
         # Install UV
         curl -LsSf https://astral.sh/uv/install.sh | sh
-        export PATH="/root/.cargo/bin:$PATH"
-
         # Build the package
         uv sync
         uv build
@@ -55,36 +53,12 @@ steps:
         # Show built files with version
         ls -la dist/
         echo "Built package with version: $(cat /workspace/version.txt)"
-  - name: python:3.11-slim
-    entrypoint: bash
-    args:
-      - -c
-      - >
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-
-        export PATH="/root/.cargo/bin:$PATH"
 
 
-        # Install twine
-
-        uv tool install twine
-
-
-        # Configure twine for GCP Artifact Registry
-
-        export TWINE_USERNAME=oauth2accesstoken
-
-        export TWINE_PASSWORD=$(gcloud auth print-access-token)
-
-        export TWINE_REPOSITORY_URL=https://${_REGION}-python.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/
-
-
-        # Upload the built package
-
-        ~/.local/bin/twine upload dist/*
 substitutions:
   _REGION: us-central1
   _REPO_NAME: Packages for tableau-to-looker-parser
 timeout: 1200s
 options:
   logging: CLOUD_LOGGING_ONLY
+  substitution_option: ALLOW_LOOSE  # 🔧 ADDITIONAL FIX: Allow loose substitutions
