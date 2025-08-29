@@ -257,7 +257,10 @@ class ViewGenerator(BaseGenerator):
                 logger.warning(
                     f"No AST data found for calculated field: {calc_field.get('name')}"
                 )
-                return None
+                return self._create_fallback_lookml_field(
+                    calc_field,
+                    "No AST data available - formula parsing may have failed",
+                )
 
             # Convert dict to ASTNode object
             ast_node = ASTNode(**ast_data)
