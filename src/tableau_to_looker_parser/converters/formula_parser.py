@@ -41,7 +41,9 @@ class FormulaLexer:
         # Field references
         (r"\[([^\]]+)\]", TokenType.FIELD_REF),
         # Numbers
-        (r"\d+\.\d+", TokenType.REAL),
+        # (r"\.\d+", TokenType.REAL),  # Decimal numbers starting with dot
+        # (r"\d+\.\d+", TokenType.REAL),
+        (r"(?:\d+\.\d+|\.\d+)", TokenType.REAL),
         (r"\d+", TokenType.INTEGER),
         # Multi-character operators
         (r"!=|<>", TokenType.NOT_EQUAL),
@@ -508,9 +510,20 @@ class FormulaParser:
                 original_name=f"[{field_name}]",
             )
 
-        # Function call
+        # Function call or field reference
         if self.match(TokenType.IDENTIFIER):
-            return self.parse_function_call()
+            # Check if this is followed by parentheses (function call) or not (field reference)
+            if self.check(TokenType.LEFT_PAREN):
+                return self.parse_function_call()
+            else:
+                # This is a field reference without brackets
+                field_name = self.previous().value
+                processed_field_name = field_name.lower().replace(" ", "_")
+                return ASTNode(
+                    node_type=NodeType.FIELD_REF,
+                    field_name=processed_field_name,
+                    original_name=field_name,
+                )
 
         # Error case
         current_token = self.peek()
