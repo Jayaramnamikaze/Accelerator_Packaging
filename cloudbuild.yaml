@@ -31,13 +31,13 @@ steps:
         if grep -q 'dynamic = \["version"\]' pyproject.toml; then
           # If using dynamic versioning, create a simple version file
           mkdir -p src/your_package
-          echo "__version__ = 'VERSION_FROM_TAG'" > src/your_package/_version.py
+          echo "__version__ = '$$VERSION_FROM_TAG'" > src/your_package/_version.py
         else
           # Update static version in pyproject.toml
-          sed -i "s/version = .*/version = \"VERSION_FROM_TAG\"/" pyproject.toml
+          sed -i "s/version = .*/version = \"$$VERSION_FROM_TAG\"/" pyproject.toml
         fi
 
-        echo "Updated version to: VERSION_FROM_TAG"
+        echo "Updated version to: $$VERSION_FROM_TAG"
         grep -A5 -B5 "version" pyproject.toml || echo "Version file created"
 
 substitutions:
