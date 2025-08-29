@@ -39,7 +39,7 @@ steps:
 
         echo "Updated version to: $$VERSION_FROM_TAG"
         grep -A5 -B5 "version" pyproject.toml || echo "Version file created"
-  - name: python:3.11-slim
+  - name: python:3.11
     entrypoint: bash
     args:
       - -c
@@ -47,7 +47,7 @@ steps:
         # Install UV
         curl -LsSf https://astral.sh/uv/install.sh | sh
         # Build the package
-         /root/.cargo/bin/uv sync --frozen
+        /root/.cargo/bin/uv sync --frozen
         /root/.cargo/bin/uv build
 
         # Show built files with version
