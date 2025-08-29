@@ -67,7 +67,7 @@ steps:
         ls -la dist/
         echo "Built package with version: $(cat /workspace/version.txt)"
 
-  - name: gcr.io/cloud-builders/gcloud
+  - name: python:3.11-slim
     entrypoint: bash
     args:
       - -c
@@ -75,12 +75,22 @@ steps:
         set -e
         echo "=== Publishing to Artifact Registry ==="
 
-        # Install dependencies for UV
-        apt-get update && apt-get install -y curl python3
+        echo "=== Installing system dependencies ==="
+        apt-get update && apt-get install -y curl gnupg lsb-release wget
+
+        echo "=== Installing Google Cloud SDK ==="
+        # Add Google Cloud SDK repository and key
+        curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+        echo "deb https://packages.cloud.google.com/apt cloud-sdk main" > /etc/apt/sources.list.d/google-cloud-sdk.list
+        apt-get update && apt-get install -y google-cloud-cli
 
 
         curl -LsSf https://astral.sh/uv/install.sh | sh
         export PATH="$$HOME/.local/bin:/root/.cargo/bin:$$PATH"
+
+        echo "=== Verifying installations ==="
+        gcloud version
+        uv --version
 
 
         # Install twine
