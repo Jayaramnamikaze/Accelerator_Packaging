@@ -653,7 +653,7 @@ TODO: Manual migration required - please convert this formula manually""",
             field_mapping[calc_id] = cleaned_name
 
         # Also map the worksheet_specific_user_aggregation fallback
-        field_mapping["worksheet_specific_user_aggregation"] = cleaned_name
+        # field_mapping["worksheet_specific_user_aggregation"] = cleaned_name
 
         # Map any other calculation references that might appear in the formula
         calculation = calc_field.get("calculation", {})

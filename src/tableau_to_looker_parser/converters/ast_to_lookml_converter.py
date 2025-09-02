@@ -241,6 +241,28 @@ class ASTToLookMLConverter:
             logger.debug(
                 f"Resolved field reference in converter: '{node.field_name}' -> '{clean_field_name}'"
             )
+        else:
+            # If no mapping found, try to resolve using the original field name with brackets
+            original_with_brackets = f"[{node.field_name}]"
+            resolved_name = field_name_mapper.resolve_field_reference(
+                original_with_brackets
+            )
+            if resolved_name != original_with_brackets:
+                clean_field_name = resolved_name
+                logger.debug(
+                    f"Resolved field reference with brackets in converter: '{original_with_brackets}' -> '{clean_field_name}'"
+                )
+            else:
+                # Try to find a mapping for the field name without case sensitivity
+                for original, clean in field_name_mapper.get_all_mappings().items():
+                    if original.lower().replace("[", "").replace("]", "").replace(
+                        " ", "_"
+                    ) == node.field_name.lower().replace(" ", "_"):
+                        clean_field_name = clean
+                        logger.debug(
+                            f"Resolved field reference with fuzzy matching in converter: '{node.field_name}' -> '{clean_field_name}'"
+                        )
+                        break
 
         # Additional cleaning for any remaining special characters
         clean_field_name = re.sub(
@@ -277,6 +299,29 @@ class ASTToLookMLConverter:
             lookml_ref = f"${{{table_context}}}.{clean_field_name}"
 
         logger.debug(f"Converted field reference: {node.field_name} → {lookml_ref}")
+
+        # Debug: Log if we're using placeholder values
+        if "worksheet_specific" in lookml_ref:
+            logger.warning(
+                f"Using placeholder value for field reference: {node.field_name} → {lookml_ref}"
+            )
+
+            # Try to find a better mapping by looking at all registered fields
+            for original, clean in field_name_mapper.get_all_mappings().items():
+                # Check if this field name matches any registered field (case insensitive)
+                if node.field_name.lower().replace(
+                    " ", "_"
+                ) in original.lower().replace(" ", "_") or original.lower().replace(
+                    " ", "_"
+                ) in node.field_name.lower().replace(" ", "_"):
+                    # Found a potential match, use it instead of placeholder
+                    if "worksheet_specific" not in clean:
+                        lookml_ref = f"${{{clean}}}"
+                        logger.info(
+                            f"Fixed field reference: {node.field_name} → {lookml_ref} (from mapping: {original} → {clean})"
+                        )
+                        break
+
         return lookml_ref
 
     def _convert_literal(self, node: ASTNode) -> str:
