@@ -167,6 +167,8 @@ class MigrationEngine:
                         # Route to appropriate result category
                         # Check if this is a calculated field first
                         if handler.__class__.__name__ == "CalculatedFieldHandler":
+                            # ALL calculated fields go to calculated_fields array
+                            # The view generator will handle the role-based classification
                             result["calculated_fields"].append(json_data)
                         elif element["type"] == "measure":
                             # Handle two-step pattern from measure handler

@@ -10,6 +10,7 @@ from typing import Dict
 from ..models.ast_schema import ASTNode, NodeType, DataType
 from typing import Optional
 import re
+from ..core.field_name_mapper import field_name_mapper
 
 logger = logging.getLogger(__name__)
 
@@ -228,8 +229,20 @@ class ASTToLookMLConverter:
             logger.warning("Field reference node missing field_name")
             return "/* Missing field name */"
 
-        # Clean field name - replace spaces with underscores, make lowercase
+        # The field_name in the AST node should already be clean (processed by formula parser)
+        # But we can double-check with the field name mapper for consistency
         clean_field_name = node.field_name
+
+        # Always try to resolve the field reference using the field name mapper
+        # This handles cases where the mapping was registered after the field was parsed
+        resolved_name = field_name_mapper.resolve_field_reference(clean_field_name)
+        if resolved_name != clean_field_name:
+            clean_field_name = resolved_name
+            logger.debug(
+                f"Resolved field reference in converter: '{node.field_name}' -> '{clean_field_name}'"
+            )
+
+        # Additional cleaning for any remaining special characters
         clean_field_name = re.sub(
             r"\[([^\]]+)\]", r"\1", clean_field_name
         )  # Remove brackets
@@ -250,11 +263,17 @@ class ASTToLookMLConverter:
         # Flatten all digits into one string
         total_digits = "".join(numbers_after_underscore)
 
+        # Check if this is a calculated field
+        is_calculated = field_name_mapper.is_calculated_field(clean_field_name)
+
         if len(total_digits) >= 10 or clean_field_name == "max_dttm":
             # Treat it as a global field reference
             lookml_ref = f"${{{clean_field_name}}}"
+        elif is_calculated:
+            # For calculated fields, use direct reference without table prefix
+            lookml_ref = f"${{{clean_field_name}}}"
         else:
-            # Default case with table prefix
+            # For direct table fields, use table prefix
             lookml_ref = f"${{{table_context}}}.{clean_field_name}"
 
         logger.debug(f"Converted field reference: {node.field_name} → {lookml_ref}")

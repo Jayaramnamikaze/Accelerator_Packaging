@@ -10,6 +10,7 @@ from .base_handler import BaseHandler
 from ..converters.formula_parser import FormulaParser
 from ..models.ast_schema import CalculatedField
 from ..models.parser_models import FunctionRegistry, OperatorRegistry
+from ..core.field_name_mapper import field_name_mapper
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,7 @@ class CalculatedFieldHandler(BaseHandler):
             print(user_caption)
         if user_caption:
             # Use caption for clean field name (convert to snake_case for LookML compatibility)
-            field_name = user_caption.lower().replace(" ", "_").replace("-", "_")
+            field_name = field_name_mapper.create_clean_name_from_caption(user_caption)
             display_name = user_caption
         else:
             # Fallback to Tableau's generated name
@@ -121,6 +122,12 @@ class CalculatedFieldHandler(BaseHandler):
             display_name = field_name
 
         original_name = data.get("name", "")  # Always preserve Tableau's internal ID
+
+        # Register the field mapping if we have both original name and clean name
+        if original_name and field_name:
+            field_name_mapper.register_field(
+                original_name, field_name, user_caption, is_calculated=True
+            )
         role = data.get("role", "dimension")
         calculation = data.get("calculation", "")
 

@@ -3,6 +3,7 @@ from typing import Dict, Optional
 
 from tableau_to_looker_parser.handlers.base_handler import BaseHandler
 from tableau_to_looker_parser.models.json_schema import DimensionSchema, DimensionType
+from ..core.field_name_mapper import field_name_mapper
 
 
 class DimensionHandler(BaseHandler):
@@ -79,15 +80,31 @@ class DimensionHandler(BaseHandler):
         Returns:
             Dict: Schema-compliant dimension data
         """
-        # Use the clean field name from v2 parser, fallback to cleaning raw_name for v1
-        name = data.get("name") or self._clean_field_name(data["raw_name"])
+        # Handle field name mapping for fields with captions
+        user_caption = data.get("caption") or data.get("label")
+        original_name = data.get("name", "")
+
+        if user_caption:
+            # Use caption for clean field name (convert to snake_case for LookML compatibility)
+            field_name = field_name_mapper.create_clean_name_from_caption(user_caption)
+            display_name = user_caption
+        else:
+            # Fallback to Tableau's generated name
+            field_name = data.get("name") or self._clean_field_name(data["raw_name"])
+            display_name = field_name
+
+        # Register the field mapping if we have both original name and clean name
+        if original_name and field_name:
+            field_name_mapper.register_field(
+                original_name, field_name, user_caption, is_calculated=False
+            )
 
         # Build base dimension
         json_data = {
-            "name": name,
+            "name": field_name,
             "field_type": self.TYPE_MAP.get(data["datatype"], DimensionType.STRING),
             "table_name": data.get("table_name"),  # Include table association
-            "label": data.get("label"),
+            "label": display_name,
             "description": self._build_description(data),
             "calculation": data.get("calculation"),
             "semantic_role": data.get("semantic_role"),
