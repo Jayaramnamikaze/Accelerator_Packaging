@@ -1,7 +1,6 @@
 from typing import Dict, Optional
 from tableau_to_looker_parser.handlers.base_handler import BaseHandler
 from tableau_to_looker_parser.models.json_schema import AggregationType
-from ..core.field_name_mapper import field_name_mapper
 
 
 class MeasureHandler(BaseHandler):
@@ -79,24 +78,8 @@ class MeasureHandler(BaseHandler):
         Returns:
             Dict: Two-step pattern with both dimension and measure
         """
-        # Handle field name mapping for fields with captions
-        user_caption = data.get("caption") or data.get("label")
-        original_name = data.get("name", "")
-
-        if user_caption:
-            # Use caption for clean field name (convert to snake_case for LookML compatibility)
-            base_name = field_name_mapper.create_clean_name_from_caption(user_caption)
-            display_name = user_caption
-        else:
-            # Fallback to Tableau's generated name
-            base_name = data.get("name") or self._clean_field_name(data["raw_name"])
-            display_name = base_name
-
-        # Register the field mapping if we have both original name and clean name
-        if original_name and base_name:
-            field_name_mapper.register_field(
-                original_name, base_name, user_caption, is_calculated=False
-            )
+        # Use the clean field name from v2 parser, fallback to cleaning raw_name for v1
+        base_name = data.get("name") or self._clean_field_name(data["raw_name"])
 
         # Get aggregation type
         aggregation = self.AGGREGATION_MAP.get(
@@ -128,7 +111,8 @@ class MeasureHandler(BaseHandler):
                 "name": measure_name,  # CR #2 Fix: Proper naming
                 "aggregation": aggregation,
                 "table_name": data.get("table_name"),
-                "label": display_name or f"Total {base_name.replace('_', ' ').title()}",
+                "label": data.get("label")
+                or f"Total {base_name.replace('_', ' ').title()}",
                 "description": self._build_description(data),
                 "hidden": False,
                 "dimension_reference": f"{base_name}_raw",  # References the raw dimension

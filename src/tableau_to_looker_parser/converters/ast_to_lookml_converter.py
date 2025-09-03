@@ -229,41 +229,14 @@ class ASTToLookMLConverter:
             logger.warning("Field reference node missing field_name")
             return "/* Missing field name */"
 
-        # The field_name in the AST node should already be clean (processed by formula parser)
-        # But we can double-check with the field name mapper for consistency
+        # Clean field name - replace spaces with underscores, make lowercase
+
         clean_field_name = node.field_name
+        clean_field_name = field_name_mapper.resolve_field_reference(node.field_name)
 
-        # Always try to resolve the field reference using the field name mapper
-        # This handles cases where the mapping was registered after the field was parsed
-        resolved_name = field_name_mapper.resolve_field_reference(clean_field_name)
-        if resolved_name != clean_field_name:
-            clean_field_name = resolved_name
-            logger.debug(
-                f"Resolved field reference in converter: '{node.field_name}' -> '{clean_field_name}'"
-            )
-        else:
-            # If no mapping found, try to resolve using the original field name with brackets
-            original_with_brackets = f"[{node.field_name}]"
-            resolved_name = field_name_mapper.resolve_field_reference(
-                original_with_brackets
-            )
-            if resolved_name != original_with_brackets:
-                clean_field_name = resolved_name
-                logger.debug(
-                    f"Resolved field reference with brackets in converter: '{original_with_brackets}' -> '{clean_field_name}'"
-                )
-            else:
-                # Try to find a mapping for the field name without case sensitivity
-                for original, clean in field_name_mapper.get_all_mappings().items():
-                    if original.lower().replace("[", "").replace("]", "").replace(
-                        " ", "_"
-                    ) == node.field_name.lower().replace(" ", "_"):
-                        clean_field_name = clean
-                        logger.debug(
-                            f"Resolved field reference with fuzzy matching in converter: '{node.field_name}' -> '{clean_field_name}'"
-                        )
-                        break
-
+        logger.debug(
+            f"Resolved field reference in converter: '{node.field_name}' -> '{clean_field_name}'"
+        )
         # Additional cleaning for any remaining special characters
         clean_field_name = re.sub(
             r"\[([^\]]+)\]", r"\1", clean_field_name
@@ -285,21 +258,15 @@ class ASTToLookMLConverter:
         # Flatten all digits into one string
         total_digits = "".join(numbers_after_underscore)
 
-        # Check if this is a calculated field
-        is_calculated = field_name_mapper.is_calculated_field(clean_field_name)
-
         if len(total_digits) >= 10 or clean_field_name == "max_dttm":
             # Treat it as a global field reference
             lookml_ref = f"${{{clean_field_name}}}"
-        elif is_calculated:
-            # For calculated fields, use direct reference without table prefix
-            lookml_ref = f"${{{clean_field_name}}}"
         else:
-            # For direct table fields, use table prefix
+            # Default case with table prefix
             lookml_ref = f"${{{table_context}}}.{clean_field_name}"
 
         logger.debug(f"Converted field reference: {node.field_name} → {lookml_ref}")
-
+        # clean_field_name = field_name_mapper.resolve_field_reference(node.field_name)
         # Debug: Log if we're using placeholder values
         if "worksheet_specific" in lookml_ref:
             logger.warning(

@@ -192,10 +192,6 @@ class ViewGenerator(BaseGenerator):
                         table_calculated_fields.append(converted_field)
 
         # Build view data - combine dimensions including hidden ones from calculated fields
-        # all_dimensions = (
-        #     table_dimensions
-        #     + table_calculated_dimensions  # Hidden dimensions from calculated field two-step pattern
-        # )
         visible_dimensions = [
             dim for dim in table_calculated_dimensions if not dim.get("hidden")
         ]
@@ -281,13 +277,7 @@ class ViewGenerator(BaseGenerator):
                 # Convert AST to LookML SQL expression
                 lookml_sql = self.ast_converter.convert_to_lookml(ast_node, "TABLE")
 
-                # NEW: Create field mapping and update SQL references
-                field_mapping = self._create_field_name_mapping(calc_field)
-                lookml_sql = self._update_sql_with_field_mapping(
-                    lookml_sql, field_mapping
-                )
-
-                # Check if this is a fallback AST node created due to parsing failure
+            # Check if this is a fallback AST node created due to parsing failure
             is_fallback = (
                 ast_node.properties
                 and ast_node.properties.get("migration_status") == "MANUAL_REQUIRED"
@@ -361,7 +351,7 @@ TODO: Manual migration required - please convert this formula manually""",
         calculation = calc_field.get("calculation", {})
         original_formula = calculation.get("original_formula", "UNKNOWN_FORMULA")
         # Use calculation ID for field name to sync with dashboard references
-        field_name = self._extract_calculation_name(calc_field)
+        field_name = self._extract_calculation_id(calc_field)
 
         # Create safe fallback field
         fallback_field = {
@@ -486,12 +476,6 @@ TODO: Manual migration required - please convert this formula manually""",
         calc_name = self._extract_calculation_name(calc_field)
         original_formula = calculation.get("original_formula", "")
 
-        # NEW: Create field mapping and update SQL references for the hidden dimension
-        field_mapping = self._create_field_name_mapping(calc_field)
-        updated_lookml_sql = self._update_sql_with_field_mapping(
-            lookml_sql, field_mapping
-        )
-
         # Create hidden dimension for row-level calculation
         dimension_field = {
             "name": f"{calc_name}_calc",  # Use calculation ID + _calc suffix
@@ -501,7 +485,7 @@ TODO: Manual migration required - please convert this formula manually""",
             "datatype": calc_field.get(
                 "datatype", "real"
             ),  # Usually numeric for measures
-            "sql": updated_lookml_sql,
+            "sql": lookml_sql,
             "original_formula": original_formula,
             "description": f"Row-level calculation for {calc_name}: {self._normalize_formula_for_description(original_formula)}",
             "lookml_type": "number",
@@ -638,55 +622,3 @@ TODO: Manual migration required - please convert this formula manually""",
                 f"Failed to generate view file for {view_data['name']}: {str(e)}"
             )
             raise
-
-    def _create_field_name_mapping(self, calc_field: Dict) -> Dict[str, str]:
-        """Create mapping from calculation IDs to cleaned field names."""
-        field_mapping = {}
-
-        # Get the cleaned name for this calculated field
-        cleaned_name = self._extract_calculation_name(calc_field)
-
-        # Map the original calculation ID to the cleaned name
-        original_name = calc_field.get("original_name", "")
-        if original_name.startswith("[Calculation_") and original_name.endswith("]"):
-            calc_id = original_name[1:-1]  # Remove brackets
-            field_mapping[calc_id] = cleaned_name
-
-        # Also map the worksheet_specific_user_aggregation fallback
-        # field_mapping["worksheet_specific_user_aggregation"] = cleaned_name
-
-        # Map any other calculation references that might appear in the formula
-        calculation = calc_field.get("calculation", {})
-        original_formula = calculation.get("original_formula", "")
-
-        # Extract all [Calculation_*] references from the formula
-        import re
-
-        calc_refs = re.findall(r"\[Calculation_(\d+)\]", original_formula)
-        for calc_ref in calc_refs:
-            full_calc_id = f"Calculation_{calc_ref}"
-            field_mapping[full_calc_id] = f"calculation_{calc_ref.lower()}"
-
-        return field_mapping
-
-    def _update_sql_with_field_mapping(
-        self, sql: str, field_mapping: Dict[str, str]
-    ) -> str:
-        """Update SQL to use cleaned field names instead of calculation IDs."""
-        if not field_mapping:
-            return sql
-
-        updated_sql = sql
-
-        # Replace calculation IDs with cleaned field names
-        for calc_id, cleaned_name in field_mapping.items():
-            # Replace ${calc_id} with ${cleaned_name}
-            updated_sql = updated_sql.replace(f"${{{calc_id}}}", f"${{{cleaned_name}}}")
-            # Replace ${TABLE}.calc_id with ${cleaned_name}
-            updated_sql = updated_sql.replace(
-                f"${{TABLE}}.{calc_id}", f"${{{cleaned_name}}}"
-            )
-            # Replace direct calc_id references
-            updated_sql = updated_sql.replace(calc_id, cleaned_name)
-
-        return updated_sql

@@ -17,7 +17,6 @@ from tableau_to_looker_parser.handlers.calculated_field_handler import (
 )
 from tableau_to_looker_parser.handlers.worksheet_handler import WorksheetHandler
 from tableau_to_looker_parser.handlers.dashboard_handler import DashboardHandler
-from tableau_to_looker_parser.core.field_name_mapper import field_name_mapper
 
 
 class MigrationEngine:
@@ -54,9 +53,6 @@ class MigrationEngine:
         self.register_handler(WorksheetHandler(enable_yaml_detection=True), priority=7)
         self.register_handler(DashboardHandler(), priority=8)
 
-        # Initialize field name mapper for each migration
-        self._initialize_field_name_mapper()
-
     def register_handler(self, handler: BaseHandler, priority: int = 100) -> None:
         """Register a handler with the engine.
 
@@ -65,73 +61,6 @@ class MigrationEngine:
             priority: Priority level (lower = higher priority)
         """
         self.plugin_registry.register_handler(handler, priority)
-
-    def _initialize_field_name_mapper(self) -> None:
-        """Initialize the field name mapper for each migration."""
-        # Clear any existing mappings to ensure clean state
-        field_name_mapper.clear()
-        self.logger.debug("Field name mapper initialized for new migration")
-
-    def _process_basic_fields_first(self, elements: List[Dict], result: Dict) -> None:
-        """Process basic fields (dimensions and measures) first to populate field name mapper."""
-        self.logger.info("Processing basic fields first to populate field name mapper")
-
-        # Get handlers for dimensions and measures
-        dimension_handler = None
-        measure_handler = None
-
-        for handler in self.plugin_registry.get_handlers_by_priority():
-            if handler.__class__.__name__ == "DimensionHandler":
-                dimension_handler = handler
-            elif handler.__class__.__name__ == "MeasureHandler":
-                measure_handler = handler
-
-        if not dimension_handler or not measure_handler:
-            self.logger.warning("Could not find dimension or measure handlers")
-            return
-
-        # Process dimensions and measures first
-        for element in elements:
-            if not element.get("data"):
-                continue
-
-            element_data = element["data"]
-            element_type = element["type"]
-
-            if element_type == "dimension":
-                # Process dimension to populate field name mapper
-                self.logger.debug(
-                    f"Processing dimension: {element_data.get('name', 'unnamed')}"
-                )
-                json_data = dimension_handler.convert_to_json(element_data)
-                result["dimensions"].append(json_data)
-                self.logger.debug(
-                    f"Processed dimension: {element_data.get('name', 'unnamed')}"
-                )
-            elif element_type == "measure":
-                # Process measure to populate field name mapper
-                self.logger.debug(
-                    f"Processing measure: {element_data.get('name', 'unnamed')}"
-                )
-                json_data = measure_handler.convert_to_json(element_data)
-                # Handle two-step pattern from measure handler
-                if json_data.get("two_step_pattern"):
-                    # Add hidden dimension to dimensions
-                    result["dimensions"].append(json_data["dimension"])
-                    # Add measure to measures
-                    result["measures"].append(json_data["measure"])
-                else:
-                    # Standard single measure
-                    result["measures"].append(json_data)
-                self.logger.debug(
-                    f"Processed measure: {element_data.get('name', 'unnamed')}"
-                )
-
-        self.logger.info(f"Field name mapper now has {len(field_name_mapper)} mappings")
-
-        # Debug: Print all mappings
-        for original, clean in field_name_mapper.get_all_mappings().items():
-            self.logger.debug(f"Field mapping: '{original}' -> '{clean}'")
 
     def migrate_file(self, tableau_file: str, output_dir: str) -> Dict[str, Any]:
         """Convert a Tableau workbook to LookML.
@@ -209,9 +138,6 @@ class MigrationEngine:
             # V2 parser provides more accurate mappings from metadata-records
             field_table_mapping = self._build_field_table_mapping(elements)
 
-            # Process basic fields first to populate field name mapper
-            self._process_basic_fields_first(elements, result)
-
             # Process each element through handlers
             for element in elements:
                 if not element.get("data"):  # Skip None values
@@ -219,13 +145,7 @@ class MigrationEngine:
 
                 element_data = element["data"]
                 element_name = element_data.get("name", "unnamed")
-                element_type = element["type"]
-
-                # Skip dimensions and measures since they were already processed
-                if element_type in ["dimension", "measure"]:
-                    continue
-
-                self.logger.info(f"Processing {element_type}: {element_name}")
+                self.logger.info(f"Processing {element['type']}: {element_name}")
 
                 handled = False
                 for handler in self.plugin_registry.get_handlers_by_priority():
@@ -247,14 +167,24 @@ class MigrationEngine:
                         # Route to appropriate result category
                         # Check if this is a calculated field first
                         if handler.__class__.__name__ == "CalculatedFieldHandler":
-                            # ALL calculated fields go to calculated_fields array
-                            # The view generator will handle the role-based classification
                             result["calculated_fields"].append(json_data)
-                        elif element_type == "parameter":
+                        elif element["type"] == "measure":
+                            # Handle two-step pattern from measure handler
+                            if json_data.get("two_step_pattern"):
+                                # Add hidden dimension to dimensions
+                                result["dimensions"].append(json_data["dimension"])
+                                # Add measure to measures
+                                result["measures"].append(json_data["measure"])
+                            else:
+                                # Standard single measure
+                                result["measures"].append(json_data)
+                        elif element["type"] == "dimension":
+                            result["dimensions"].append(json_data)
+                        elif element["type"] == "parameter":
                             result["parameters"].append(json_data)
-                        elif element_type == "connection":
+                        elif element["type"] == "connection":
                             result["connections"].append(json_data)
-                        elif element_type == "relationships":
+                        elif element["type"] == "relationships":
                             # Special handling for relationships
                             result["tables"].extend(json_data.get("tables", []))
                             result["relationships"].extend(
