@@ -253,41 +253,15 @@ class ASTToLookMLConverter:
         clean_field_name = clean_field_name.strip("_").lower()
 
         # Build LookML field reference
-        numbers_after_underscore = re.findall(r"_(\d+)", clean_field_name)
-
-        # Flatten all digits into one string
-        total_digits = "".join(numbers_after_underscore)
-
-        if len(total_digits) >= 10 or clean_field_name == "max_dttm":
-            # Treat it as a global field reference
+        # Check if this is a calculated field using the field name mapper
+        if field_name_mapper.is_calculated_field(node.field_name):
+            # For calculated fields, use global reference without table context
             lookml_ref = f"${{{clean_field_name}}}"
         else:
-            # Default case with table prefix
+            # For table fields, use table context
             lookml_ref = f"${{{table_context}}}.{clean_field_name}"
 
         logger.debug(f"Converted field reference: {node.field_name} → {lookml_ref}")
-        # clean_field_name = field_name_mapper.resolve_field_reference(node.field_name)
-        # Debug: Log if we're using placeholder values
-        if "worksheet_specific" in lookml_ref:
-            logger.warning(
-                f"Using placeholder value for field reference: {node.field_name} → {lookml_ref}"
-            )
-
-            # Try to find a better mapping by looking at all registered fields
-            for original, clean in field_name_mapper.get_all_mappings().items():
-                # Check if this field name matches any registered field (case insensitive)
-                if node.field_name.lower().replace(
-                    " ", "_"
-                ) in original.lower().replace(" ", "_") or original.lower().replace(
-                    " ", "_"
-                ) in node.field_name.lower().replace(" ", "_"):
-                    # Found a potential match, use it instead of placeholder
-                    if "worksheet_specific" not in clean:
-                        lookml_ref = f"${{{clean}}}"
-                        logger.info(
-                            f"Fixed field reference: {node.field_name} → {lookml_ref} (from mapping: {original} → {clean})"
-                        )
-                        break
 
         return lookml_ref
 

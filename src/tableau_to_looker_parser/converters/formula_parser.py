@@ -213,17 +213,81 @@ class FormulaParser:
         # Statistics
         self.stats = ParseStatistics()
 
+    def _remove_comments(self, formula: str) -> str:
+        """
+        Remove both single-line (//) and multi-line (/* */) comments from Tableau formulas.
+
+        Args:
+            formula: The original formula string
+
+        Returns:
+            The formula with all comments removed
+        """
+        result = []
+        i = 0
+        in_string = False
+        string_char = None
+
+        while i < len(formula):
+            char = formula[i]
+
+            # Handle string literals - don't process comments inside strings
+            if not in_string and char in ['"', "'"]:
+                in_string = True
+                string_char = char
+                result.append(char)
+            elif in_string and char == string_char:
+                # Check for escaped quotes
+                if i > 0 and formula[i - 1] == "\\":
+                    result.append(char)
+                else:
+                    in_string = False
+                    string_char = None
+                    result.append(char)
+            elif in_string:
+                # Inside string, just append character
+                result.append(char)
+            else:
+                # Not in string, check for comments
+                if i < len(formula) - 1:
+                    # Check for single-line comment //
+                    if char == "/" and formula[i + 1] == "/":
+                        # Skip to end of line
+                        while i < len(formula) and formula[i] != "\n":
+                            i += 1
+                        # Don't append the newline, just continue
+                        continue
+
+                    # Check for multi-line comment /*
+                    elif char == "/" and formula[i + 1] == "*":
+                        # Skip to end of comment */ (handle nested comments)
+                        i += 2  # Skip /*
+                        comment_depth = 1
+                        while i < len(formula) - 1 and comment_depth > 0:
+                            if formula[i] == "*" and formula[i + 1] == "/":
+                                comment_depth -= 1
+                                i += 2  # Skip */
+                            elif formula[i] == "/" and formula[i + 1] == "*":
+                                comment_depth += 1
+                                i += 2  # Skip /*
+                            else:
+                                i += 1
+                        continue
+
+                # Not a comment, append the character
+                result.append(char)
+
+            i += 1
+
+        return "".join(result).strip()
+
     def parse_formula(
         self, formula: str, field_name: str = "", field_type: str = "dimension"
     ) -> FormulaParseResult:
         """Parse a Tableau formula and return the result."""
         try:
-            # comment = ""
-            formula = formula
-            if "//" in formula:
-                parts = formula.split("//", 1)
-                formula = parts[0].rstrip()
-                # comment = "//" + parts[1].strip()
+            # Remove all comments before parsing
+            formula = self._remove_comments(formula)
             # Reset state
             self.tokens = self.lexer.tokenize(formula)
             self.current = 0
