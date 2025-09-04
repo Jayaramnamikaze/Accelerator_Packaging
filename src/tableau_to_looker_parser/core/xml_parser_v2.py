@@ -675,6 +675,9 @@ class TableauXMLParserV2:
             # Create element based on field type
             field_type = field_def.get("field_type")
 
+            if not field_def.get("datasource_id"):
+                field_def["datasource_id"] = datasource_id
+
             if field_type in ["measure", "dimension"]:
                 # Convert to handler format - use REMOTE-NAME for clean field names
                 element_data = {
@@ -1467,27 +1470,31 @@ class TableauXMLParserV2:
             unique_vals = set(chart_values)
             if len(unique_vals) == 1:
                 # Case 3: all same — take any (choose last)
-                 if "pie" in unique_vals:
+                if "pie" in unique_vals:
                     chart_type_extracted = "pie"
             else:
                 # Case 2: multiple different marks — choose mark_2 where present
                 # chart_values preserve insertion order (mark_1, mark_2, ...)
-                chart_type_extracted = chart_values[1] if len(chart_values) > 1 else chart_values[0]
-        
+                chart_type_extracted = (
+                    chart_values[1] if len(chart_values) > 1 else chart_values[0]
+                )
+
         if len(chart_values) > 1 and len(set(chart_values)) > 1:
             series_type = True
-            series_field_source = []   # placeholder until you give me the logic
+            series_field_source = []  # placeholder until you give me the logic
             # Use 3rd mark's value if available
             series_field_chart_type = chart_type_dict.get("mark_3", [])
         else:
             series_type = False
             series_field_source = []
             series_field_chart_type = []
-        
+
         # Debug print
         worksheet_name = worksheet.get("name", "")
         if worksheet_name == "Device TR Ranking":
-            print(f"[DEBUG] Worksheet '{worksheet_name}' chart_type_dict: {chart_type_dict}")
+            print(
+                f"[DEBUG] Worksheet '{worksheet_name}' chart_type_dict: {chart_type_dict}"
+            )
             # print(f"[DEBUG] Extracted chart_type: {chart_type}")
 
         # Extract encodings - RAW DATA ONLY
@@ -1520,7 +1527,7 @@ class TableauXMLParserV2:
             "show_labels": self._extract_show_labels(pane),
             "show_totals": self._extract_show_totals(worksheet),
             "raw_config": {
-                 "chart_type": chart_type_dict,
+                "chart_type": chart_type_dict,
                 # "mark_class": chart_type,
                 "chart_type_extracted": chart_type_extracted,
                 "encodings": encodings_info,  # Raw encoding data for handler

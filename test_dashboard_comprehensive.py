@@ -22,10 +22,7 @@ def test_dashboard_pipeline(test_file=None):
 
     # Test configuration - use command line arg or default
     if not test_file:
-
-        test_file = (
-            "connected_devices_dashboard/Set_Up_Go_Launch_Dashboard_Modified.twb"
-        )
+        test_file = "connected_devices_dashboard\Sales Summary_final.twb"
 
     output_dir = "comprehensive_dashboard_test_output"
 
