@@ -124,6 +124,17 @@ class DashboardGenerator(BaseGenerator):
 
         return self.template_engine.render_template("dashboard.j2", context)
 
+    def _generate_worksheet_title(self, worksheet) -> str:
+        # Check if title is a placeholder
+        if (
+            worksheet.title
+            and worksheet.title.strip()
+            and worksheet.title.strip() != "<Sheet Name>"
+        ):
+            return worksheet.title.strip()
+        # Use worksheet name as fallback
+        return worksheet.name
+
     def _convert_elements_to_lookml(
         self, elements: List[DashboardElement], migration_data: Dict
     ) -> List[Dict]:
@@ -212,7 +223,7 @@ class DashboardGenerator(BaseGenerator):
 
         # Create LookML element matching the YAML format
         lookml_element = {
-            "title": worksheet.name.replace("_", " ").title(),
+            "title": self._generate_worksheet_title(worksheet),
             "name": worksheet.clean_name,
             "model": model_name,
             "explore": explore_name,

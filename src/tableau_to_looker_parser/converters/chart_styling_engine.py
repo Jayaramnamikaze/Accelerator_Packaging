@@ -145,7 +145,7 @@ class ChartStylingEngine:
 
         # Map Tableau title properties to Looker properties
         title_text = title_style_data.get("text")
-        if title_text:
+        if title_text and title_text.strip() != "<Sheet Name>":
             title_config["title"] = title_text
 
         # Apply chart-specific title styling from config

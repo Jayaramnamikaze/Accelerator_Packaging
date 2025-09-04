@@ -5,7 +5,7 @@
 {% if description %}  description: '{{ description }}'{% endif %}
   elements:
 {% for element in elements %}
-  - title: {{ element.title }}
+  - title: "{{ element.title }}"
     name: {{ element.name }}
     model: {{ element.model }}
     explore: {{ element.explore }}

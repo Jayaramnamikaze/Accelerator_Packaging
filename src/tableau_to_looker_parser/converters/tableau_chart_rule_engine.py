@@ -215,7 +215,9 @@ class TableauChartRuleEngine:
         if chart_type_extracted:
             mark_type = str(chart_type_extracted).title()
         else:
-            raw_mark_type = raw_config.get("chart_type") or viz_config.get("chart_type", "automatic")
+            raw_mark_type = raw_config.get("chart_type") or viz_config.get(
+                "chart_type", "automatic"
+            )
             # If it's a dict of marks, fallback to first value
             if isinstance(raw_mark_type, dict):
                 raw_mark_type = list(raw_mark_type.values())[0]
@@ -346,8 +348,10 @@ class TableauChartRuleEngine:
             "raw_viz_config": viz_config,
             "field_count": len(fields),
         }
-        if worksheet_data.get('name', '') == "Device TR Ranking":
-            print(f"Detection context for worksheet '{worksheet_data.get('name', '')}':\n{context}\n")
+        if worksheet_data.get("name", "") == "Device TR Ranking":
+            print(
+                f"Detection context for worksheet '{worksheet_data.get('name', '')}':\n{context}\n"
+            )
 
         self.logger.debug(f"Detection context: {context}")
         return context
