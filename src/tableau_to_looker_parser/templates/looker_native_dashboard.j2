@@ -18,7 +18,7 @@
 {% if element.stacking %}    stacking: {{ element.stacking }}
 {% endif %}
 {% if element.filters and element.filters|length > 0 %}    filters:
-{% for filter_key, filter_value in element.filters.items() %}      {{ filter_key }}: "{{ filter_value }}"
+{% for filter_key, filter_value in element.filters.items() %}      {{ filter_key }}: {{ filter_value }}
 {% endfor %}{% endif %}
 {% if element.sorts and element.sorts|length > 0 %}    sorts: [{% for sort in element.sorts %}{% if not loop.first %},
       {% endif %}{{ sort }}{% endfor %}]

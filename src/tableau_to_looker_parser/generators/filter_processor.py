@@ -168,7 +168,7 @@ class FilterProcessor:
 
         # Remove duplicates and return
         unique_values = list(dict.fromkeys(extracted_values))  # Preserve order
-        return ",".join(unique_values) if unique_values else ""
+        return ", ".join(unique_values) if unique_values else ""
 
     def _process_date_filter(self, tableau_filter: TableauFilter) -> str:
         """Process date filter."""
