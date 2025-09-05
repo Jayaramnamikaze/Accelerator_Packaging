@@ -10,6 +10,7 @@ from typing import Dict
 from ..models.ast_schema import ASTNode, NodeType, DataType
 from typing import Optional
 import re
+from ..core.field_name_mapper import field_name_mapper
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,8 @@ class ASTToLookMLConverter:
             return self._convert_conditional(node, table_context)
         elif node.node_type == NodeType.CASE:
             return self._convert_case(node, table_context)
+        elif node.node_type == NodeType.PARAMETER_REF:
+            return self._convert_parameter_ref(node, table_context)
         elif node.node_type == NodeType.LOD_EXPRESSION:
             return self._convert_lod_expression(node, table_context)
         elif node.node_type == NodeType.DERIVED_TABLE:
@@ -227,7 +230,14 @@ class ASTToLookMLConverter:
             return "/* Missing field name */"
 
         # Clean field name - replace spaces with underscores, make lowercase
+
         clean_field_name = node.field_name
+        clean_field_name = field_name_mapper.resolve_field_reference(node.field_name)
+
+        logger.debug(
+            f"Resolved field reference in converter: '{node.field_name}' -> '{clean_field_name}'"
+        )
+        # Additional cleaning for any remaining special characters
         clean_field_name = re.sub(
             r"\[([^\]]+)\]", r"\1", clean_field_name
         )  # Remove brackets
@@ -243,19 +253,16 @@ class ASTToLookMLConverter:
         clean_field_name = clean_field_name.strip("_").lower()
 
         # Build LookML field reference
-        numbers_after_underscore = re.findall(r"_(\d+)", clean_field_name)
-
-        # Flatten all digits into one string
-        total_digits = "".join(numbers_after_underscore)
-
-        if len(total_digits) >= 10 or clean_field_name == "max_dttm":
-            # Treat it as a global field reference
+        # Check if this is a calculated field using the field name mapper
+        if field_name_mapper.is_calculated_field(node.field_name):
+            # For calculated fields, use global reference without table context
             lookml_ref = f"${{{clean_field_name}}}"
         else:
-            # Default case with table prefix
+            # For table fields, use table context
             lookml_ref = f"${{{table_context}}}.{clean_field_name}"
 
         logger.debug(f"Converted field reference: {node.field_name} → {lookml_ref}")
+
         return lookml_ref
 
     def _convert_literal(self, node: ASTNode) -> str:
@@ -1018,3 +1025,58 @@ class ASTToLookMLConverter:
         logger.warning(f"Parse error: {parse_error}")
 
         return fallback_sql
+
+    def _convert_parameter_ref(self, node: ASTNode, table_context: str) -> str:
+        """
+        Convert Tableau parameter reference to LookML parameter.
+
+        Args:
+            node: Parameter reference AST node
+            table_context: Table context (not used for parameters)
+
+        Returns:
+            LookML parameter reference in format {% parameter name %}
+        """
+        if not node.field_name:
+            logger.warning("Parameter reference node missing field_name")
+            return "/* Invalid parameter reference */"
+
+        # Extract parameter name from field_name (e.g., "parameters.Parameter 10" -> "Parameter 10")
+        if "." in node.field_name:
+            param_name = node.field_name.split(".", 1)[1]
+        else:
+            param_name = node.field_name
+
+        # Convert to LookML parameter format: {% parameter name %}
+        param_name = self._clean_parameter_name(param_name)
+
+        logger.debug(
+            f"Converting parameter reference: {node.field_name} -> {{% parameter {param_name} %}}"
+        )
+        return f"{{% parameter {param_name} %}}"
+
+    def _clean_parameter_name(self, param_name: str) -> str:
+        """
+        Clean parameter name to be a valid LookML identifier.
+
+        Args:
+            param_name: Raw parameter name from Tableau
+
+        Returns:
+            Cleaned parameter name suitable for LookML
+        """
+
+        # Replace spaces and special characters (but NOT underscores) with underscores
+        clean_name = re.sub(r"[^a-zA-Z0-9_-]", "_", param_name)
+
+        # Replace multiple consecutive underscores with single underscore (but preserve existing single underscores)
+        clean_name = re.sub(r"_+", "_", clean_name)
+
+        # Remove leading/trailing underscores
+        clean_name = clean_name.strip("_")
+
+        # If empty after cleaning, provide a default
+        if not clean_name:
+            clean_name = "unknown_parameter"
+
+        return clean_name.lower()

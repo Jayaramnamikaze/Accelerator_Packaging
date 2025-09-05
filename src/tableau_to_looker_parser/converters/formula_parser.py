@@ -41,7 +41,9 @@ class FormulaLexer:
         # Field references
         (r"\[([^\]]+)\]", TokenType.FIELD_REF),
         # Numbers
-        (r"\d+\.\d+", TokenType.REAL),
+        # (r"\.\d+", TokenType.REAL),  # Decimal numbers starting with dot
+        # (r"\d+\.\d+", TokenType.REAL),
+        (r"(?:\d+\.\d+|\.\d+)", TokenType.REAL),
         (r"\d+", TokenType.INTEGER),
         # Multi-character operators
         (r"!=|<>", TokenType.NOT_EQUAL),
@@ -64,6 +66,7 @@ class FormulaLexer:
         (r"\{", TokenType.LEFT_BRACE),
         (r"\}", TokenType.RIGHT_BRACE),
         (r":", TokenType.COLON),
+        (r"\.", TokenType.PERIOD),
         # Keywords and identifiers (case insensitive)
         (r"(?i)\bIF\b", TokenType.IF),
         (r"(?i)\bTHEN\b", TokenType.THEN),
@@ -210,17 +213,81 @@ class FormulaParser:
         # Statistics
         self.stats = ParseStatistics()
 
+    def _remove_comments(self, formula: str) -> str:
+        """
+        Remove both single-line (//) and multi-line (/* */) comments from Tableau formulas.
+
+        Args:
+            formula: The original formula string
+
+        Returns:
+            The formula with all comments removed
+        """
+        result = []
+        i = 0
+        in_string = False
+        string_char = None
+
+        while i < len(formula):
+            char = formula[i]
+
+            # Handle string literals - don't process comments inside strings
+            if not in_string and char in ['"', "'"]:
+                in_string = True
+                string_char = char
+                result.append(char)
+            elif in_string and char == string_char:
+                # Check for escaped quotes
+                if i > 0 and formula[i - 1] == "\\":
+                    result.append(char)
+                else:
+                    in_string = False
+                    string_char = None
+                    result.append(char)
+            elif in_string:
+                # Inside string, just append character
+                result.append(char)
+            else:
+                # Not in string, check for comments
+                if i < len(formula) - 1:
+                    # Check for single-line comment //
+                    if char == "/" and formula[i + 1] == "/":
+                        # Skip to end of line
+                        while i < len(formula) and formula[i] != "\n":
+                            i += 1
+                        # Don't append the newline, just continue
+                        continue
+
+                    # Check for multi-line comment /*
+                    elif char == "/" and formula[i + 1] == "*":
+                        # Skip to end of comment */ (handle nested comments)
+                        i += 2  # Skip /*
+                        comment_depth = 1
+                        while i < len(formula) - 1 and comment_depth > 0:
+                            if formula[i] == "*" and formula[i + 1] == "/":
+                                comment_depth -= 1
+                                i += 2  # Skip */
+                            elif formula[i] == "/" and formula[i + 1] == "*":
+                                comment_depth += 1
+                                i += 2  # Skip /*
+                            else:
+                                i += 1
+                        continue
+
+                # Not a comment, append the character
+                result.append(char)
+
+            i += 1
+
+        return "".join(result).strip()
+
     def parse_formula(
         self, formula: str, field_name: str = "", field_type: str = "dimension"
     ) -> FormulaParseResult:
         """Parse a Tableau formula and return the result."""
         try:
-            # comment = ""
-            formula = formula
-            if "//" in formula:
-                parts = formula.split("//", 1)
-                formula = parts[0].rstrip()
-                # comment = "//" + parts[1].strip()
+            # Remove all comments before parsing
+            formula = self._remove_comments(formula)
             # Reset state
             self.tokens = self.lexer.tokenize(formula)
             self.current = 0
@@ -471,9 +538,33 @@ class FormulaParser:
         if self.match(TokenType.FIELD_REF):
             field_name = self.previous().value
 
+            # Check if this is part of a parameter reference: [Parameters].[Parameter Name]
+            if field_name.lower() == "parameters" and self.check(TokenType.PERIOD):
+                # This is a parameter reference
+                self.advance()  # Consume the period
+                if self.check(TokenType.FIELD_REF):
+                    param_name = self.advance().value
+                    return ASTNode(
+                        node_type=NodeType.PARAMETER_REF,
+                        field_name=f"parameters.{param_name}",
+                        original_name=f"[Parameters].[{param_name}]",
+                    )
+                else:
+                    # Malformed parameter reference
+                    self.errors.append(
+                        ParserError(
+                            message="Expected parameter name after [Parameters].",
+                            position=self.peek().position,
+                            severity="error",
+                        )
+                    )
+                    return ASTNode(
+                        node_type=NodeType.LITERAL, value=None, data_type=DataType.NULL
+                    )
+
             # To DO : remove harcoded fix
             if field_name == "Rolling 36 (copy)_777433916922368001":
-                processed_field_name = "max dttm"
+                processed_field_name = "max_dttm"
             else:
                 processed_field_name = field_name.lower().replace(" ", "_")
 
@@ -483,9 +574,20 @@ class FormulaParser:
                 original_name=f"[{field_name}]",
             )
 
-        # Function call
+        # Function call or field reference
         if self.match(TokenType.IDENTIFIER):
-            return self.parse_function_call()
+            # Check if this is followed by parentheses (function call) or not (field reference)
+            if self.check(TokenType.LEFT_PAREN):
+                return self.parse_function_call()
+            else:
+                # This is a field reference without brackets
+                field_name = self.previous().value
+                processed_field_name = field_name.lower().replace(" ", "_")
+                return ASTNode(
+                    node_type=NodeType.FIELD_REF,
+                    field_name=processed_field_name,
+                    original_name=field_name,
+                )
 
         # Error case
         current_token = self.peek()
@@ -564,21 +666,34 @@ class FormulaParser:
             # CASE [expression] WHEN... format
             case_expression = self.parse_expression()
 
-        # Parse WHEN clauses
-        while self.match(TokenType.WHEN):
+        # Parse WHEN clauses - handle both "WHEN" and "When" (case insensitive)
+        while self.match(TokenType.WHEN) or self.match_any_identifier(
+            ["when", "When", "WHEN"]
+        ):
             when_condition = self.parse_expression()
-            self.consume(TokenType.THEN, "Expected 'THEN' after WHEN condition")
+
+            # Handle both "THEN" and "Then" (case insensitive)
+            if not self.match(TokenType.THEN):
+                # Try to match case-insensitive THEN
+                if not self.match_any_identifier(["then", "Then", "THEN"]):
+                    self.consume(TokenType.THEN, "Expected 'THEN' after WHEN condition")
+
             when_result = self.parse_expression()
 
             when_clauses.append(
                 WhenClause(condition=when_condition, result=when_result)
             )
 
-        # Parse optional ELSE clause
-        if self.match(TokenType.ELSE):
+        # Parse optional ELSE clause - handle both "ELSE" and "Else" (case insensitive)
+        if self.match(TokenType.ELSE) or self.match_any_identifier(
+            ["else", "Else", "ELSE"]
+        ):
             else_branch = self.parse_expression()
 
-        self.consume(TokenType.END, "Expected 'END' to close CASE statement")
+        # Handle both "END" and "End" (case insensitive)
+        if not self.match(TokenType.END):
+            if not self.match_any_identifier(["end", "End", "END"]):
+                self.consume(TokenType.END, "Expected 'END' to close CASE statement")
 
         return ASTNode(
             node_type=NodeType.CASE,
@@ -737,6 +852,22 @@ class FormulaParser:
         """Check if current token matches any of the given types."""
         for token_type in types:
             if self.check(token_type):
+                self.advance()
+                return True
+        return False
+
+    def match_any_identifier(self, identifiers: List[str]) -> bool:
+        """Check if current token is an identifier matching any of the given strings (case insensitive)."""
+        if self.is_at_end():
+            return False
+
+        current_token = self.peek()
+        if current_token.type != TokenType.IDENTIFIER:
+            return False
+
+        current_value = current_token.value.lower()
+        for identifier in identifiers:
+            if current_value == identifier.lower():
                 self.advance()
                 return True
         return False

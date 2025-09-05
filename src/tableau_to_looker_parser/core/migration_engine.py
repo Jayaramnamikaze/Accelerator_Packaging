@@ -160,6 +160,7 @@ class MigrationEngine:
                             json_data = handler.convert_to_json(
                                 element_data, field_table_mapping
                             )
+
                         else:
                             json_data = handler.convert_to_json(element_data)
 

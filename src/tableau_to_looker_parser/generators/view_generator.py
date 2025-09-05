@@ -7,6 +7,8 @@ import logging
 from types import SimpleNamespace
 
 from .base_generator import BaseGenerator
+
+# from .parameter_generator import generate_looker_parameters
 from ..converters.ast_to_lookml_converter import ASTToLookMLConverter
 from ..models.ast_schema import ASTNode, NodeType
 
@@ -160,6 +162,8 @@ class ViewGenerator(BaseGenerator):
                 # Convert AST to LookML SQL using our converter
 
                 converted_field = self._convert_calculated_field(calc_field, view_name)
+                if converted_field.get("name") == "rptmth_copy":
+                    print("here")
                 if converted_field:
                     # NEW: Check if this field defines a derived table
                     ast_data = calc_field.get("calculation", {}).get("ast", {})
@@ -188,10 +192,18 @@ class ViewGenerator(BaseGenerator):
                         table_calculated_fields.append(converted_field)
 
         # Build view data - combine dimensions including hidden ones from calculated fields
+        visible_dimensions = [
+            dim for dim in table_calculated_dimensions if not dim.get("hidden")
+        ]
         all_dimensions = (
             table_dimensions
-            + table_calculated_dimensions  # Hidden dimensions from calculated field two-step pattern
+            + visible_dimensions  # Only visible dimensions from calculated field two-step pattern
         )
+
+        # Extract parameters for this view
+        view_parameters = []
+        if "parameters" in migration_data:
+            view_parameters = migration_data["parameters"]
 
         view_data = {
             "name": view_name,
@@ -202,6 +214,7 @@ class ViewGenerator(BaseGenerator):
             "calculated_dimensions": table_calculated_dimensions,
             "derived_table_sql": derived_table_sql,  # <-- NEW
             "is_derived_table": is_derived_table,  # <-- NEW
+            "parameters": view_parameters,  # <-- NEW: Add parameters
         }
 
         return self._create_view_file(view_data, output_dir), view_data
@@ -249,7 +262,10 @@ class ViewGenerator(BaseGenerator):
                 logger.warning(
                     f"No AST data found for calculated field: {calc_field.get('name')}"
                 )
-                return None
+                return self._create_fallback_lookml_field(
+                    calc_field,
+                    "No AST data available - formula parsing may have failed",
+                )
 
             # Convert dict to ASTNode object
             ast_node = ASTNode(**ast_data)
@@ -457,12 +473,12 @@ TODO: Manual migration required - please convert this formula manually""",
             Dict with two-step pattern fields (dimension and measure)
         """
         # Extract calculation ID to sync with dashboard references
-        calc_id = self._extract_calculation_id(calc_field)
+        calc_name = self._extract_calculation_name(calc_field)
         original_formula = calculation.get("original_formula", "")
 
         # Create hidden dimension for row-level calculation
         dimension_field = {
-            "name": f"{calc_id}_calc",  # Use calculation ID + _calc suffix
+            "name": f"{calc_name}_calc",  # Use calculation ID + _calc suffix
             "original_name": calc_field.get("original_name", ""),
             "field_type": "dimension",
             "role": "dimension",
@@ -471,7 +487,7 @@ TODO: Manual migration required - please convert this formula manually""",
             ),  # Usually numeric for measures
             "sql": lookml_sql,
             "original_formula": original_formula,
-            "description": f"Row-level calculation for {calc_id}: {self._normalize_formula_for_description(original_formula)}",
+            "description": f"Row-level calculation for {calc_name}: {self._normalize_formula_for_description(original_formula)}",
             "lookml_type": "number",
             "hidden": True,  # Hide the calculation dimension
             "is_two_step_dimension": True,  # Flag for template
@@ -479,21 +495,21 @@ TODO: Manual migration required - please convert this formula manually""",
 
         # Create measure that aggregates the dimension - use the exact calculation ID to match dashboard
         measure_field = {
-            "name": calc_id,  # Use exact calculation ID as dashboard references it
+            "name": calc_name,  # Use exact calculation ID as dashboard references it
             "original_name": calc_field.get("original_name", ""),
             "field_type": "measure",
             "role": "measure",
             "datatype": calc_field.get("datatype", "real"),
-            "sql": f"${{{calc_id}_calc}}",  # Reference the hidden dimension
+            "sql": f"${{{calc_name}_calc}}",  # Reference the hidden dimension
             "original_formula": original_formula,
             "description": f"Calculated field: {self._normalize_formula_for_description(original_formula)}",
             "lookml_type": "sum",  # Aggregate the dimension values
             "is_two_step_measure": True,  # Flag for template
-            "references_dimension": f"{calc_id}_calc",  # Reference to dimension
+            "references_dimension": f"{calc_name}_calc",  # Reference to dimension
         }
 
         logger.debug(
-            f"Created two-step pattern for '{calc_id}': dimension '{calc_id}_calc' + measure '{calc_id}'"
+            f"Created two-step pattern for '{calc_name}': dimension '{calc_name}_calc' + measure '{calc_name}'"
         )
 
         return {
@@ -531,14 +547,14 @@ TODO: Manual migration required - please convert this formula manually""",
 
         # Extract ID from format like "[Calculation_1181350527289110528]"
         if original_name.startswith("[Calculation_") and original_name.endswith("]"):
-            calc_id = original_name[1:-1]  # Remove brackets
-            calc_id = calc_id.lower()  # Convert to lowercase for consistency
-            return calc_id
+            calc_name = original_name[1:-1]  # Remove brackets
+            calc_name = calc_name.lower()  # Convert to lowercase for consistency
+            return calc_name
         elif original_name.startswith("[") and original_name.endswith("]"):
             # Handle other calculation formats, convert to lowercase and clean
-            calc_id = original_name[1:-1]  # Remove brackets
-            calc_id = self._clean_name(calc_id)
-            return calc_id
+            calc_name = original_name[1:-1]  # Remove brackets
+            calc_name = self._clean_name(calc_name)
+            return calc_name
         else:
             # Fallback if format is unexpected
             logger.warning(f"Unexpected original_name format: {original_name}")
@@ -587,6 +603,11 @@ TODO: Manual migration required - please convert this formula manually""",
                 > 0,
                 "derived_table_sql": view_data.get("derived_table_sql"),  # <-- NEW
                 "is_derived_table": view_data.get("is_derived_table", False),  # <-- NEW
+                "parameters": view_data.get(
+                    "parameters", []
+                ),  # <-- NEW: Add parameters
+                "has_parameters": len(view_data.get("parameters", []))
+                > 0,  # <-- NEW: Check if parameters exist
             }
 
             content = self.template_engine.render_template("basic_view.j2", context)

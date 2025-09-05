@@ -31,3 +31,8 @@ connected_devices_test_output/
 connected_devices_dashboard/Intraday_Sales.twb
 test_echarts_output/
 comprehensive_dashboard_test_output/
+test_dashboard_comprehensive.py
+uv.lock
+connected_devices_dashboard/Sales Summary_final.twb
+uv.lock
+uv.lock

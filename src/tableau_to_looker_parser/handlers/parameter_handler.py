@@ -1,11 +1,9 @@
 from typing import Dict, Optional
-
 from tableau_to_looker_parser.handlers.base_handler import BaseHandler
 from tableau_to_looker_parser.models.json_schema import (
     ParameterType,
     RangeParameterSettings,
     ListParameterSettings,
-    ParameterSettings,
     DateParameterSettings,
 )
 
@@ -43,7 +41,7 @@ class ParameterHandler(BaseHandler):
             float: Confidence score between 0.0 and 1.0
         """
         # Must have param_domain_type
-        if not data.get("param_domain_type"):
+        if not data.get("param-domain-type"):
             return 0.0
 
         # Must have datatype
@@ -66,7 +64,7 @@ class ParameterHandler(BaseHandler):
         name = self._clean_field_name(data["raw_name"])
 
         param_type = self._get_parameter_type(
-            data["param_domain_type"], data["datatype"]
+            data["param-domain-type"], data["datatype"]
         )
 
         # Build parameter settings
@@ -76,7 +74,6 @@ class ParameterHandler(BaseHandler):
             "description": self._build_description(data),
             "required": False,  # Default to optional
         }
-
         # Handle type-specific settings
         if param_type in [ParameterType.DATE, ParameterType.DATETIME]:
             date_settings = {
@@ -84,27 +81,22 @@ class ParameterHandler(BaseHandler):
                 if param_type == ParameterType.DATE
                 else "YYYY-MM-DD HH:mm:ss"
             }
-
             # Add range if present
-            if data.get("range"):
-                date_settings["range"] = RangeParameterSettings(
-                    **data["range"], inclusive_min=True, inclusive_max=True
-                )
-
+            # if data.get("range"):
+            #     date_settings["range"] = RangeParameterSettings(
+            #         **data["range"], inclusive_min=True, inclusive_max=True
+            #     )
             # Add allowed values if present
             if data.get("values"):
                 date_settings["allowed_values"] = ListParameterSettings(
                     values=data["values"], value_type="date"
                 )
-
             settings["date"] = DateParameterSettings(**date_settings)
-
         elif param_type == ParameterType.RANGE:
             if data.get("range"):
                 settings["range"] = RangeParameterSettings(
                     **data["range"], inclusive_min=True, inclusive_max=True
                 )
-
         elif param_type == ParameterType.LIST:
             if data.get("values"):
                 value_type = "string"
@@ -112,22 +104,50 @@ class ParameterHandler(BaseHandler):
                     value_type = "number"
                 elif data["datatype"] in ["date", "datetime"]:
                     value_type = "date"
-
                 settings["list"] = ListParameterSettings(
                     values=data["values"],
                     allow_multiple=False,
                     value_type=value_type,
                 )
-
-        # Build complete parameter
+        # Build complete parameter in the desired format
         json_data = {
             "name": name,
-            "field_type": self.TYPE_MAP.get(data["datatype"], "string"),
-            "label": data.get("label"),
-            "description": self._build_description(data),
-            "hidden": False,
-            "parameter": ParameterSettings(**settings),
+            "caption": self._clean_field_name(data.get("label") or data.get("caption")),
+            "datatype": data["datatype"],
+            "default_value": self._clean_string_value(data.get("default_value")),
+            "param_domain_type": data["param-domain-type"],
         }
+
+        if data.get("values"):
+            json_data["members"] = []
+            for val in data["values"]:
+                # Clean the value by removing extra quotes
+                clean_val = self._clean_string_value(val)
+                if clean_val:
+                    # Only add value field, no alias when using fallback values
+                    json_data["members"].append({"value": clean_val})
+
+        if data.get("alias"):
+            json_data["members"] = []
+            for val in data["alias"]:
+                # Clean the value by removing extra quotes
+                clean_val = self._clean_string_value(val)
+                if clean_val:
+                    # Only add value field, no alias when using fallback values
+                    json_data["members"].append({"alias": clean_val})
+
+        # Add range for range parameters
+        if data.get("range"):
+            # Clean range values by removing # symbols
+            cleaned_range = {}
+            for key, value in data["range"].items():
+                if value is not None:
+                    cleaned_range[key] = self._clean_string_value(value)
+                else:
+                    cleaned_range[key] = value
+            json_data["range"] = cleaned_range
+        else:
+            json_data["range"] = {}
 
         return json_data
 
@@ -223,3 +243,19 @@ class ParameterHandler(BaseHandler):
             parts.append(f"Original name: {raw_data['raw_name']}")
 
         return " | ".join(parts) if parts else None
+
+    def _clean_string_value(self, value):
+        """Clean a string value by removing extra quotes and # symbols.
+
+        Args:
+            value: String value that may contain extra quotes or # symbols
+
+        Returns:
+            str: Clean string value without extra quotes or # symbols
+        """
+        if value is None:
+            return None
+        if isinstance(value, str):
+            # Remove leading and trailing quotes and # symbols
+            return value.strip('"').strip("#")
+        return str(value)

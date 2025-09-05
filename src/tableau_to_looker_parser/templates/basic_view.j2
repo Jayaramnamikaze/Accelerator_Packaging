@@ -13,6 +13,58 @@ view: {{ view_name }} {
   description: "{{ view.description }}"
   {% endif %}
 
+  # Parameters (from Tableau parameters)
+  {% if has_parameters %}
+  {% for param in parameters %}
+  {% if param.param_domain_type == 'list' %}
+  parameter: {{ param.name }} {
+    {% if param.caption %}
+    label: "{{ param.caption | replace('"', '\\"') }}"
+    {% elif param.label %}
+    label: "{{ param.label | replace('"', '\\"') }}"
+    {% endif %}
+    type: {{ param.datatype | lower }}
+    {% if param.default_value %}
+    default_value: "{{ param.default_value | replace('"', '\\"') }}"
+    {% endif %}
+    {% if param.members %}
+    {% for member in param.members %}
+    allowed_value: {
+      {# label: "{{ member.alias | replace('"', '\\"') }}" #}
+      value: "{{ member.value | replace('"', '\\"') }}"
+    }
+    {% endfor %}
+    {% endif %}
+  }
+  {% elif param.param_domain_type == 'range' %}
+  parameter: {{ param.name }} {
+    {% if param.caption %}
+    label: "{{ param.caption | replace('"', '\\"') }}"
+    {% elif param.label %}
+    label: "{{ param.label | replace('"', '\\"') }}"
+    {% endif %}
+    type: {{ param.datatype | lower }}
+    {% if param.default_value %}
+    default_value: "{{ param.default_value | replace('"', '\\"') }}"
+    {% endif %}
+
+  }
+  {% else %}
+  parameter: {{ param.name }} {
+    {% if param.caption %}
+    label: "{{ param.caption | replace('"', '\\"') }}"
+    {% elif param.label %}
+    label: "{{ param.label | replace('"', '\\"') }}"
+    {% endif %}
+    type: {{ param.datatype | lower }}
+    {% if param.default_value %}
+    default_value: "{{ param.default_value | replace('"', '\\"') }}"
+    {% endif %}
+  }
+  {% endif %}
+  {% endfor %}
+  {% endif %}
+
   # Date dimension groups
   {% if has_dimensions %}
   {% for dimension in dimensions %}
@@ -155,7 +207,7 @@ view: {{ view_name }} {
     description: "{{ calc_field.description | escape_quotes }}"
     {% if calc_field.is_two_step_measure %}
     type: number
-    sql: ${{ '{' + calc_field.references_dimension + '}' }} ;;
+    sql: ${{ '{' + (calc_field.references_dimension | clean_name) + '}' }} ;;
     {% elif calc_field.lookml_type %}
     type: number
     sql: {{ calc_field.sql }} ;;
@@ -187,7 +239,7 @@ view: {{ view_name }} {
     {% if measure.dimension_reference %}
     {# Two-step pattern: measure references hidden dimension #}
     type: {{ measure.aggregation.value if measure.aggregation.value else 'sum' }}
-    sql: ${ {{- measure.dimension_reference -}} } ;;
+    sql: ${ {{- measure.dimension_reference | clean_name -}} } ;;
     {% elif measure.lookml_type %}
     {# Derived measure with specific type #}
     type: {{ measure.lookml_type }}

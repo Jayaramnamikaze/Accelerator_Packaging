@@ -251,6 +251,7 @@ class LayoutCalculator:
         element: DashboardElement,
         migration_data: Dict[str, Any],
         height_based_rows: Dict[str, int] = None,
+        existing_elements: list = None,
     ) -> Dict[str, int]:
         """
         Calculate clean Looker-native positioning from dashboard element.
@@ -260,6 +261,7 @@ class LayoutCalculator:
         Args:
             element: Dashboard element with position information
             migration_data: Migration data containing dashboard context
+            existing_elements: List of already positioned elements to avoid collisions
 
         Returns:
             Dictionary with row, col, width, height for Looker LookML
@@ -284,7 +286,53 @@ class LayoutCalculator:
             5, position["height"]
         )  # Match manual dashboard minimum
 
+        # Fix collision issue: ensure no overlap with existing elements
+        if existing_elements:
+            position = self._resolve_collisions(position, existing_elements)
+
         return position
+
+    def _resolve_collisions(
+        self, position: Dict[str, int], existing_elements: list
+    ) -> Dict[str, int]:
+        """
+        Resolve collisions by adjusting column position to avoid overlaps.
+
+        Args:
+            position: Current position dictionary
+            existing_elements: List of already positioned elements
+
+        Returns:
+            Adjusted position dictionary without collisions
+        """
+        adjusted_position = position.copy()
+
+        # Check for collisions with existing elements in the same row
+        for existing in existing_elements:
+            if existing.get("row") == adjusted_position["row"]:
+                # Check if there's a collision
+                existing_end = existing.get("col", 0) + existing.get("width", 0)
+                current_start = adjusted_position["col"]
+
+                # If current element starts before existing element ends, there's a collision
+                if current_start < existing_end:
+                    # Move current element to start after existing element
+                    adjusted_position["col"] = existing_end
+
+                    # Ensure it doesn't go off-screen
+                    if (
+                        adjusted_position["col"] + adjusted_position["width"]
+                        > self.grid_columns
+                    ):
+                        adjusted_position["col"] = max(
+                            0, self.grid_columns - adjusted_position["width"]
+                        )
+
+                    logger.info(
+                        f"Resolved collision: moved element to col {adjusted_position['col']}"
+                    )
+
+        return adjusted_position
 
     def calculate_height_based_rows(self, elements: list) -> Dict[str, int]:
         """

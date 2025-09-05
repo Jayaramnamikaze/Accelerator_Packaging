@@ -5,7 +5,7 @@
 {% if description %}  description: '{{ description }}'{% endif %}
   elements:
 {% for element in elements %}
-  - title: {{ element.title }}
+  - title: "{{ element.title }}"
     name: {{ element.name }}
     model: {{ element.model }}
     explore: {{ element.explore }}
@@ -45,6 +45,10 @@
     col: {{ element.col }}
     width: {{ element.width }}
     height: {{ element.height }}
+{% if element.series_type %}
+    series_types:
+      {{ element.series }}: {{ element.series_chart_type }}
+{% endif %}
 
 {% endfor %}
 {% if filters and filters|length > 0 %}  filters:

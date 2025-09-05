@@ -135,11 +135,13 @@ class TableauXMLParserV2:
         """
         elements = []
 
+        # Global tracking to prevent parameter duplication across datasources
+        global_processed_parameters = set()
+
         # Process each datasource
         for datasource in root.findall(".//datasource"):
-            self.logger.info(
-                f"Processing datasource: {datasource.get('name', 'unnamed')}"
-            )
+            datasource_name = datasource.get("name", "unnamed")
+            self.logger.info(f"Processing datasource: {datasource_name}")
 
             datasource_id = datasource.get("name")
 
@@ -155,7 +157,10 @@ class TableauXMLParserV2:
 
             # Phase 3: Merge and enhance fields
             enhanced_fields = self._merge_field_data(
-                metadata_fields, column_enhancements, datasource_id
+                metadata_fields,
+                column_enhancements,
+                datasource_id,
+                global_processed_parameters,
             )
             self.logger.info(
                 f"Created {len(enhanced_fields)} enhanced field definitions"
@@ -170,11 +175,11 @@ class TableauXMLParserV2:
             # Phase 5: Convert to element format for handlers
             elements.extend(
                 self._convert_fields_to_elements(
-                    enhanced_fields, table_mapping, alias_mapping
+                    enhanced_fields, table_mapping, alias_mapping, datasource_id
                 )
             )
 
-            # Phase 6: Add other element types (connections, relationships, parameters)
+            # Phase 6: Add other element types (connections, relationships)
             elements.extend(self._extract_other_elements(datasource))
 
         self.logger.info(f"Total elements extracted: {len(elements)}")
@@ -202,6 +207,9 @@ class TableauXMLParserV2:
             local_type_elem = metadata.find("local-type")
             aggregation_elem = metadata.find("aggregation")
             contains_null_elem = metadata.find("contains-null")
+
+            if parent_name_elem.text.strip("[]") == "Extract":
+                continue
 
             # Skip if missing essential elements
             if not (local_name_elem is not None and remote_name_elem is not None):
@@ -335,15 +343,19 @@ class TableauXMLParserV2:
             # Check for parameter domain settings
             param_domain = col.get("param-domain-type")
             if param_domain:
-                enhancement["param_domain_type"] = param_domain
+                enhancement["param-domain-type"] = param_domain
                 enhancement["field_type"] = "parameter"
 
                 # Get parameter values
                 if param_domain == "list":
                     members = col.findall(".//member")
-                    enhancement["values"] = [
-                        m.get("value") for m in members if m.get("value")
-                    ]
+                    if members is not None:
+                        enhancement["values"] = [
+                            m.get("value") for m in members if m.get("value")
+                        ]
+                        enhancement["alias"] = [
+                            m.get("alias") for m in members if m.get("alias")
+                        ]
                 elif param_domain == "range":
                     range_element = col.find("range")
                     if range_element is not None:
@@ -353,12 +365,16 @@ class TableauXMLParserV2:
                             "step": range_element.get("step", "1"),
                         }
 
-                # Get default value
-                default = col.find("default-value")
-                if default is not None:
-                    enhancement["default_value"] = default.get("value") or default.get(
-                        "formula"
-                    )
+                # Get default value from column value attribute (for parameters)
+                if col.get("value"):
+                    enhancement["default_value"] = col.get("value")
+                else:
+                    # Fallback to default-value element if it exists
+                    default = col.find("default-value")
+                    if default is not None:
+                        enhancement["default_value"] = default.get(
+                            "value"
+                        ) or default.get("formula")
 
             column_enhancements[name] = enhancement
 
@@ -370,6 +386,7 @@ class TableauXMLParserV2:
         metadata_fields: Dict[str, Dict],
         column_enhancements: Dict[str, Dict],
         datasource_id: str,
+        global_processed_parameters: set,
     ) -> Dict[str, Dict]:
         """Merge metadata fields with column enhancements for complete field definitions.
 
@@ -407,15 +424,20 @@ class TableauXMLParserV2:
                 enhanced_field["datasource_id"] = datasource_id
 
                 # Override field type if it's a parameter
-                if enhancement.get("param_domain_type"):
+                if enhancement.get("param-domain-type"):
                     enhanced_field["field_type"] = "parameter"
                     enhanced_field["role"] = "parameter"
-                    enhanced_field["param_domain_type"] = enhancement[
-                        "param_domain_type"
+                    enhanced_field["param-domain-type"] = enhancement[
+                        "param-domain-type"
                     ]
                     enhanced_field["values"] = enhancement.get("values", [])
                     enhanced_field["range"] = enhancement.get("range")
                     enhanced_field["default_value"] = enhancement.get("default_value")
+                    enhanced_field["alias"] = enhancement.get("alias")
+                    enhanced_field["members"] = enhancement.get("members")
+
+                    # Add to global processed parameters to prevent duplication
+                    global_processed_parameters.add(field_name)
 
                 # Update source to indicate enhancement
                 enhanced_field["source"] = "metadata_enhanced"
@@ -434,7 +456,11 @@ class TableauXMLParserV2:
 
         # Add calculated fields that exist only in column elements (NO METADATA)
         for field_name, enhancement in column_enhancements.items():
-            if field_name not in enhanced_fields and enhancement.get("is_calculated"):
+            if (
+                field_name not in enhanced_fields
+                and enhancement.get("is_calculated")
+                and enhancement.get("field_type") != "parameter"
+            ):
                 # Get any table name from existing fields for calculated field
                 any_table_name = None
                 if metadata_fields:
@@ -465,6 +491,26 @@ class TableauXMLParserV2:
                     "datasource_id": datasource_id,
                 }
                 enhanced_fields[field_name] = calculated_field
+
+        for field_name, enhancement in column_enhancements.items():
+            if (
+                field_name not in enhanced_fields
+                and enhancement.get("field_type") == "parameter"
+                and field_name not in global_processed_parameters
+            ):
+                parameter_field = {
+                    "local_name": f"[{field_name}]",
+                    "field_type": "parameter",
+                    "datatype": enhancement.get("datatype", "string"),
+                    "caption": enhancement.get("caption"),
+                    "param-domain-type": enhancement.get("param-domain-type", "list"),
+                    "values": enhancement.get("values", []),
+                    "range": enhancement.get("range"),
+                    "alias": enhancement.get("alias", " "),
+                    "default_value": enhancement.get("default_value"),
+                }
+                enhanced_fields[field_name] = parameter_field
+                global_processed_parameters.add(field_name)
 
         self.logger.info(f"Merged {len(enhanced_fields)} enhanced field definitions")
         return enhanced_fields
@@ -605,6 +651,7 @@ class TableauXMLParserV2:
         enhanced_fields: Dict[str, Dict],
         table_mapping: Dict[str, str],
         alias_mapping: Dict[str, str],
+        datasource_id: str,
     ) -> List[Dict]:
         """Convert enhanced field definitions to element format for handlers.
 
@@ -612,6 +659,7 @@ class TableauXMLParserV2:
             enhanced_fields: Enhanced field definitions
             table_mapping: Field to table mapping
             alias_mapping: Table alias mapping
+            datasource_id: Datasource ID
 
         Returns:
             List of element dictionaries for handler processing
@@ -626,6 +674,9 @@ class TableauXMLParserV2:
 
             # Create element based on field type
             field_type = field_def.get("field_type")
+
+            if not field_def.get("datasource_id"):
+                field_def["datasource_id"] = datasource_id
 
             if field_type in ["measure", "dimension"]:
                 # Convert to handler format - use REMOTE-NAME for clean field names
@@ -683,7 +734,7 @@ class TableauXMLParserV2:
                     "raw_name": field_def["local_name"],
                     "role": "parameter",
                     "datatype": field_def["datatype"],
-                    "param_domain_type": field_def.get("param_domain_type"),
+                    "param-domain-type": field_def.get("param-domain-type"),
                     "values": field_def.get("values", []),
                     "range": field_def.get("range"),
                     "default_value": field_def.get("default_value"),
@@ -1006,7 +1057,7 @@ class TableauXMLParserV2:
         for worksheet in root.findall(".//worksheet"):
             worksheet_name = worksheet.get("name")
 
-            if worksheet_name == "byTypeS apple":
+            if worksheet_name == "Sales By Region":
                 print(f"Worksheet {worksheet_name} has data: {worksheet}")
 
             if not worksheet_name:
@@ -1362,12 +1413,14 @@ class TableauXMLParserV2:
                             encodings_list.append(child.tag)
 
         # Set shelf based on primary encoding if found
+        """
         if "color" in encodings_list:
             shelf = "color"
         elif "size" in encodings_list:
             shelf = "size"
         elif "text" in encodings_list:
             shelf = "text"
+        """
 
         return {"shelf": shelf, "encodings": encodings_list}
 
@@ -1392,10 +1445,59 @@ class TableauXMLParserV2:
             }
 
         # Extract mark type (chart type) - RAW DATA ONLY
-        mark = pane.find("mark")
-        chart_type = (
-            mark.get("class", "automatic").lower() if mark is not None else "automatic"
-        )
+        # mark = pane.find("mark")
+        # chart_type = (
+        #     mark.get("class", "automatic").lower() if mark is not None else "automatic"
+        # )
+        marks = worksheet.findall(".//mark")
+        chart_type_dict = {}
+
+        for idx, mark_elem in enumerate(marks, start=1):
+            mark_class = mark_elem.get("class", "automatic")
+            # Normalize to lowercase (optional, depends on your needs)
+            chart_type = mark_class.lower() if mark_class else "automatic"
+            chart_type_dict[f"mark_{idx}"] = chart_type
+
+        chart_values = list(chart_type_dict.values())
+
+        if not chart_values:
+            chart_type_extracted = "automatic"
+        elif len(chart_values) == 1:
+            # Case 1: only one mark
+            chart_type_extracted = chart_values[0]
+        else:
+            # multiple marks present
+            # lower-casing already applied to chart_type_dict values in your loop above;
+            # check if all values are the same
+            unique_vals = set(chart_values)
+            if len(unique_vals) == 1:
+                # Case 3: all same — take any (choose last)
+                if "pie" in unique_vals:
+                    chart_type_extracted = "pie"
+            else:
+                # Case 2: multiple different marks — choose mark_2 where present
+                # chart_values preserve insertion order (mark_1, mark_2, ...)
+                chart_type_extracted = (
+                    chart_values[1] if len(chart_values) > 1 else chart_values[0]
+                )
+
+        if len(chart_values) > 1 and len(set(chart_values)) > 1:
+            series_type = True
+            series_field_source = []  # placeholder until you give me the logic
+            # Use 3rd mark's value if available
+            series_field_chart_type = chart_type_dict.get("mark_3", [])
+        else:
+            series_type = False
+            series_field_source = []
+            series_field_chart_type = []
+
+        # Debug print
+        worksheet_name = worksheet.get("name", "")
+        if worksheet_name == "Device TR Ranking":
+            print(
+                f"[DEBUG] Worksheet '{worksheet_name}' chart_type_dict: {chart_type_dict}"
+            )
+            # print(f"[DEBUG] Extracted chart_type: {chart_type}")
 
         # Extract encodings - RAW DATA ONLY
         encodings_info = self._extract_pane_encodings(pane)
@@ -1412,7 +1514,11 @@ class TableauXMLParserV2:
 
         # Extract field mappings
         viz_config = {
-            "chart_type": chart_type,  # Raw chart type from XML
+            "chart_type": chart_type_dict,  # Raw chart type from XML
+            "chart_type_extracted": chart_type_extracted,
+            "series_type": series_type,
+            "series_field_source": series_field_source,
+            "series_field_chart_type": series_field_chart_type,
             "x_axis": self._extract_shelf_fields(worksheet, "cols"),
             "y_axis": self._extract_shelf_fields(worksheet, "rows"),
             "color": None,
@@ -1423,8 +1529,9 @@ class TableauXMLParserV2:
             "show_labels": self._extract_show_labels(pane),
             "show_totals": self._extract_show_totals(worksheet),
             "raw_config": {
-                "chart_type": chart_type,
-                "mark_class": chart_type,
+                "chart_type": chart_type_dict,
+                # "mark_class": chart_type,
+                "chart_type_extracted": chart_type_extracted,
                 "encodings": encodings_info,  # Raw encoding data for handler
                 "pane_styling": pane_styling,  # NEW: Pane-specific styling
             },
