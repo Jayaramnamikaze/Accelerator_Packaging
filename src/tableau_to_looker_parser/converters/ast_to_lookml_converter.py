@@ -337,14 +337,14 @@ class ASTToLookMLConverter:
             # Modulo operator
             return f"MOD({left_expr}, {right_expr})"
 
-        elif operator == "+":
-            # Check if this is string concatenation by examining the operands
-            if self._is_string_concatenation(node.left, node.right):
-                # Use || for string concatenation in SQL
-                return f"({left_expr} || {right_expr})"
-            else:
-                # Use + for numeric addition
-                return f"({left_expr} + {right_expr})"
+        # elif operator == "+":
+        #     # Check if this is string concatenation by examining the operands
+        #     if self._is_string_concatenation(node.left, node.right):
+        #         # Use || for string concatenation in SQL
+        #         return f"({left_expr} || {right_expr})"
+        #     else:
+        #         # Use + for numeric addition
+        #         return f"({left_expr} + {right_expr})"
         else:
             # Standard operators: -, *, /
             # Wrap in parentheses to preserve precedence
@@ -1119,38 +1119,38 @@ class ASTToLookMLConverter:
 
         return clean_name.lower()
 
-    def _is_string_concatenation(self, left_node: ASTNode, right_node: ASTNode) -> bool:
-        """
-        Determine if a + operation is string concatenation based on operand types.
+    # def _is_string_concatenation(self, left_node: ASTNode, right_node: ASTNode) -> bool:
+    #     """
+    #     Determine if a + operation is string concatenation based on operand types.
 
-        This method examines the AST nodes to determine if the + operator
-        should be treated as string concatenation (using ||) or numeric addition (using +).
+    #     This method examines the AST nodes to determine if the + operator
+    #     should be treated as string concatenation (using ||) or numeric addition (using +).
 
-        Args:
-            left_node: Left operand AST node
-            right_node: Right operand AST node
+    #     Args:
+    #         left_node: Left operand AST node
+    #         right_node: Right operand AST node
 
-        Returns:
-            bool: True if this should be string concatenation, False for numeric addition
-        """
-        # Check if either operand is a string literal
-        if (
-            left_node.node_type == NodeType.LITERAL
-            and left_node.data_type == DataType.STRING
-        ) or (
-            right_node.node_type == NodeType.LITERAL
-            and right_node.data_type == DataType.STRING
-        ):
-            return True
+    #     Returns:
+    #         bool: True if this should be string concatenation, False for numeric addition
+    #     """
+    #     # Check if either operand is a string literal
+    #     if (
+    #         left_node.node_type == NodeType.LITERAL
+    #         and left_node.data_type == DataType.STRING
+    #     ) or (
+    #         right_node.node_type == NodeType.LITERAL
+    #         and right_node.data_type == DataType.STRING
+    #     ):
+    #         return True
 
-        # Check if either operand is an arithmetic operation that results in string concatenation
-        if (
-            left_node.node_type == NodeType.ARITHMETIC and left_node.operator == "+"
-        ) or (
-            right_node.node_type == NodeType.ARITHMETIC and right_node.operator == "+"
-        ):
-            # If either operand is already a string concatenation, this is likely string concatenation too
-            return True
+    #     # Check if either operand is an arithmetic operation that results in string concatenation
+    #     if (
+    #         left_node.node_type == NodeType.ARITHMETIC and left_node.operator == "+"
+    #     ) or (
+    #         right_node.node_type == NodeType.ARITHMETIC and right_node.operator == "+"
+    #     ):
+    #         # If either operand is already a string concatenation, this is likely string concatenation too
+    #         return True
 
-        # Default to numeric addition if we can't determine
-        return False
+    #     # Default to numeric addition if we can't determine
+    #     return False
