@@ -211,6 +211,7 @@ class TableauChartRuleEngine:
         # ).title()  # Convert to "Square", "Bar", "Pie", etc.
         # Prefer the extracted chart type if available
         chart_type_extracted = raw_config.get("chart_type_extracted")
+        chart_type_dict = raw_config.get("chart_type")
 
         if chart_type_extracted:
             mark_type = str(chart_type_extracted).title()
@@ -287,6 +288,11 @@ class TableauChartRuleEngine:
                 ":qk" in col or "sum:" in col.lower() or "avg:" in col.lower()
                 for col in text_columns
             )
+        has_alternating_square_text = False
+        if chart_type_dict:
+            has_alternating_square_text = self._is_alternating_square_text(
+                chart_type_dict
+            )
 
         # Note: inner_radius was removed from YAML rules since pie + dual_axis is sufficient for donut detection
 
@@ -347,6 +353,7 @@ class TableauChartRuleEngine:
             # Raw data for debugging
             "raw_viz_config": viz_config,
             "field_count": len(fields),
+            "has_alternating_square_text": has_alternating_square_text,
         }
         if worksheet_data.get("name", "") == "Device TR Ranking":
             print(
@@ -355,6 +362,34 @@ class TableauChartRuleEngine:
 
         self.logger.debug(f"Detection context: {context}")
         return context
+
+    def _is_alternating_square_text(self, json_data):
+        marks = [
+            json_data[f"mark_{i}"] for i in range(1, 20) if f"mark_{i}" in json_data
+        ]
+
+        if marks[0] == "automatic":
+            marks = marks[1:]
+
+        if len(marks) < 2:
+            return False
+
+        # Count how many transitions follow the pattern
+        correct_transitions = 0
+        total_transitions = len(marks) - 1
+
+        for i in range(total_transitions):
+            current = marks[i]
+            next_mark = marks[i + 1]
+
+            # Expected pattern: square→text→square→text...
+            expected_next = "text" if current == "square" else "square"
+
+            if next_mark == expected_next:
+                correct_transitions += 1
+
+        # Return True if 80% or more transitions follow the pattern
+        return correct_transitions / total_transitions >= 0.8
 
     def _analyze_fields(self, fields: List[Dict]) -> Dict[str, Any]:
         """Analyze fields to extract type information."""
@@ -616,6 +651,7 @@ class TableauChartRuleEngine:
             "has_multiple_measures",
             "has_mark_stacking",
             "has_binned_fields",
+            "has_alternating_square_text",
         ]:
             return bool(actual_value) == bool(expected_value)
 

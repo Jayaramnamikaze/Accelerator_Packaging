@@ -25,6 +25,17 @@ basic_chart_detection:
     fields_sources: ["rows_shelf","column_shelf", "text_marks"]
     pivot_field_source: ["columns_shelf"]
 
+  crosstab_table_with_alternating_square_text:
+    conditions:
+      - has_alternating_square_text: true
+      - rows_shelf_has_string: true
+      - has_alternating_square_text: true
+    confidence: 80
+    looker_equivalent: "looker_grid"
+    fields_sources: ["rows_shelf","column_shelf", "text_marks"]
+    pivot_required: false
+
+
   # Bar Chart Detection (Your Favorite)
 
   stacked_1dim_bar_chart:
