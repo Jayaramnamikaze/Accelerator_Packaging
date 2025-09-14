@@ -199,7 +199,7 @@ class ASTToLookMLConverter:
             "FLOAT": "CAST({0} AS FLOAT64)",  # Convert to float
             "INT": "CAST({0} AS INT64)",  # Convert to integer
             "STR": "CAST({0} AS STRING)",  # Convert to string
-            "DATE": "DATE({0})",  # Convert to date
+            "DATE": "TIMESTAMP(DATE({0}))",  # Convert to date and wrap with TIMESTAMP
             "DATETIME": "DATETIME({0})",  # Convert to datetime
             # Logical functions from Excel mapping
             "IFNULL": "IFNULL",  # NULL handling function
@@ -350,17 +350,20 @@ class ASTToLookMLConverter:
         elif operator == "%":
             # Modulo operator
             return f"MOD({left_expr}, {right_expr})"
-
-        # elif operator == "+":
-        #     # Check if this is string concatenation by examining the operands
-        #     if self._is_string_concatenation(node.left, node.right):
-        #         # Use || for string concatenation in SQL
-        #         return f"({left_expr} || {right_expr})"
-        #     else:
-        #         # Use + for numeric addition
-        #         return f"({left_expr} + {right_expr})"
+        elif operator == "/":
+            # Always wrap the right operand with NULLIF to prevent division by zero
+            # This works for field references, function calls, and any other expressions
+            return f"({left_expr} / NULLIF({right_expr}, 0))"
+        elif operator == "+":
+            # Check if this is string concatenation
+            if self._is_string_concatenation(node.left, node.right):
+                # Use || for string concatenation in SQL
+                return f"({left_expr} || {right_expr})"
+            else:
+                # Use + for numeric addition
+                return f"({left_expr} + {right_expr})"
         else:
-            # Standard operators: -, *, /
+            # Standard operators: -, *
             # Wrap in parentheses to preserve precedence
             return f"({left_expr} {operator} {right_expr})"
 
@@ -391,6 +394,13 @@ class ASTToLookMLConverter:
         elif operator.upper() == "IN":
             # For IN operator, right side should be a list
             return f"({left_expr} IN {right_expr})"
+
+        # Handle NULL comparisons
+        if self._is_null_comparison(node.left, node.right, operator):
+            if operator == "=" or operator == "==":
+                return f"({left_expr} IS NULL)"
+            elif operator == "!=" or operator == "<>":
+                return f"({left_expr} IS NOT NULL)"
 
         return f"({left_expr} {operator} {right_expr})"
 
@@ -687,7 +697,13 @@ class ASTToLookMLConverter:
                 ):
                     condition_expr = raw_condition_expr
                 else:
-                    condition_expr = f"({base_case_expr} = {raw_condition_expr})"
+                    # Check if this is a NULL comparison
+                    if self._is_null_comparison(
+                        node.case_expression, when_clause.condition, "="
+                    ):
+                        condition_expr = f"({base_case_expr} IS NULL)"
+                    else:
+                        condition_expr = f"({base_case_expr} = {raw_condition_expr})"
             else:
                 condition_expr = raw_condition_expr
 
@@ -1133,38 +1149,116 @@ class ASTToLookMLConverter:
 
         return clean_name.lower()
 
-    # def _is_string_concatenation(self, left_node: ASTNode, right_node: ASTNode) -> bool:
-    #     """
-    #     Determine if a + operation is string concatenation based on operand types.
+    def _is_string_concatenation(self, left_node: ASTNode, right_node: ASTNode) -> bool:
+        """
+        Determine if a + operation is string concatenation based on operand types.
 
-    #     This method examines the AST nodes to determine if the + operator
-    #     should be treated as string concatenation (using ||) or numeric addition (using +).
+        This method examines the AST nodes to determine if the + operator
+        should be treated as string concatenation (using ||) or numeric addition (using +).
 
-    #     Args:
-    #         left_node: Left operand AST node
-    #         right_node: Right operand AST node
+        Args:
+            left_node: Left operand AST node
+            right_node: Right operand AST node
 
-    #     Returns:
-    #         bool: True if this should be string concatenation, False for numeric addition
-    #     """
-    #     # Check if either operand is a string literal
-    #     if (
-    #         left_node.node_type == NodeType.LITERAL
-    #         and left_node.data_type == DataType.STRING
-    #     ) or (
-    #         right_node.node_type == NodeType.LITERAL
-    #         and right_node.data_type == DataType.STRING
-    #     ):
-    #         return True
+        Returns:
+            bool: True if this should be string concatenation, False for numeric addition
+        """
+        # Check if either operand is a string literal
+        if (
+            left_node.node_type == NodeType.LITERAL
+            and left_node.data_type == DataType.STRING
+        ) or (
+            right_node.node_type == NodeType.LITERAL
+            and right_node.data_type == DataType.STRING
+        ):
+            return True
 
-    #     # Check if either operand is an arithmetic operation that results in string concatenation
-    #     if (
-    #         left_node.node_type == NodeType.ARITHMETIC and left_node.operator == "+"
-    #     ) or (
-    #         right_node.node_type == NodeType.ARITHMETIC and right_node.operator == "+"
-    #     ):
-    #         # If either operand is already a string concatenation, this is likely string concatenation too
-    #         return True
+        # Check if either operand is a string function
+        if (
+            left_node.node_type == NodeType.FUNCTION
+            and self._is_string_function(left_node)
+        ) or (
+            right_node.node_type == NodeType.FUNCTION
+            and self._is_string_function(right_node)
+        ):
+            return True
 
-    #     # Default to numeric addition if we can't determine
-    #     return False
+        # Check if either operand is an arithmetic operation that results in string concatenation
+        if (
+            left_node.node_type == NodeType.ARITHMETIC
+            and self._is_string_concatenation(left_node.left, left_node.right)
+        ) or (
+            right_node.node_type == NodeType.ARITHMETIC
+            and self._is_string_concatenation(right_node.left, right_node.right)
+        ):
+            return True
+
+        # Default to numeric addition if we can't determine
+        return False
+
+    def _is_string_function(self, node: ASTNode) -> bool:
+        """
+        Check if a function returns a string.
+
+        Args:
+            node: Function AST node
+
+        Returns:
+            bool: True if function returns string, False otherwise
+        """
+        string_functions = {
+            "STR",
+            "STRING",
+            "TEXT",
+            "UPPER",
+            "LOWER",
+            "TRIM",
+            "LTRIM",
+            "RTRIM",
+            "LEFT",
+            "RIGHT",
+            "MID",
+            "SUBSTR",
+            "REPLACE",
+            "CONCAT",
+            "CONCATENATE",
+            "DATE",
+            "DATETIME",
+            "FORMAT",
+            "TEXT",
+            "CHAR",
+            "CHR",
+            "ASCII",
+            "PROPER",
+            "INITCAP",
+            "FIND",
+            "SEARCH",
+            "SPLIT",
+        }
+
+        return node.function_name in string_functions
+
+    def _is_null_comparison(
+        self, left_node: ASTNode, right_node: ASTNode, operator: str
+    ) -> bool:
+        """
+        Check if this is a comparison with NULL.
+
+        Args:
+            left_node: Left operand AST node
+            right_node: Right operand AST node
+            operator: Comparison operator
+
+        Returns:
+            bool: True if this is a NULL comparison, False otherwise
+        """
+        # Check if either operand is NULL
+        left_is_null = (
+            left_node.node_type == NodeType.LITERAL and left_node.value is None
+        )
+        right_is_null = (
+            right_node.node_type == NodeType.LITERAL and right_node.value is None
+        )
+
+        # Only handle = and != operators for NULL comparisons
+        return (left_is_null or right_is_null) and operator in ["=", "==", "!=", "<>"]

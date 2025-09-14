@@ -327,7 +327,7 @@ class TestFormulaConversion:
             ("FLOAT([Text Value])", "CAST(${TABLE}.`Text Value` AS FLOAT64)"),
             ("INT([Decimal Value])", "CAST(${TABLE}.`Decimal Value` AS INT64)"),
             ("STR([Number])", "CAST(${TABLE}.`Number` AS STRING)"),
-            ("DATE([Text Date])", "DATE(${TABLE}.`Text Date`)"),
+            ("DATE([Text Date])", "TIMESTAMP(DATE(${TABLE}.`Text Date`))"),
             ("DATETIME([Text DateTime])", "DATETIME(${TABLE}.`Text DateTime`)"),
         ]
 
@@ -368,7 +368,7 @@ class TestFormulaConversion:
             ("[Sales] + [Profit]", "(${TABLE}.`Sales` + ${TABLE}.`Profit`)"),
             ("[Revenue] - [Cost]", "(${TABLE}.`Revenue` - ${TABLE}.`Cost`)"),
             ("[Price] * [Quantity]", "(${TABLE}.`Price` * ${TABLE}.`Quantity`)"),
-            ("[Total] / [Count]", "(${TABLE}.`Total` / ${TABLE}.`Count`)"),
+            ("[Total] / [Count]", "(${TABLE}.`Total` / NULLIF(${TABLE}.`Count`, 0))"),
             ("[Base] ^ 2", "POW(${TABLE}.`Base`, 2)"),
             ("[Value] % 10", "MOD(${TABLE}.`Value`, 10)"),
         ]
@@ -391,7 +391,7 @@ class TestFormulaConversion:
             ("[Sales] > 1000", "(${TABLE}.`Sales` > 1000)"),
             ("[Profit] < 0", "(${TABLE}.`Profit` < 0)"),
             ("[Status] = 'Active'", "(${TABLE}.`Status` = 'Active')"),
-            ("[Value] != NULL", "(${TABLE}.`Value` != NULL)"),
+            ("[Value] != NULL", "(${TABLE}.`Value` IS NOT NULL)"),
             ("[Score] >= 80", "(${TABLE}.`Score` >= 80)"),
             ("[Rating] <= 5", "(${TABLE}.`Rating` <= 5)"),
         ]
@@ -481,7 +481,7 @@ class TestFormulaConversion:
             # Multiple operations
             (
                 "ROUND([Sales] / [Quantity], 2)",
-                "ROUND((${TABLE}.`Sales` / ${TABLE}.`Quantity`), 2)",
+                "ROUND((${TABLE}.`Sales` / NULLIF(${TABLE}.`Quantity`, 0)), 2)",
             ),
         ]
 
