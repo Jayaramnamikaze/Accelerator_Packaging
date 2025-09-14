@@ -41,6 +41,9 @@ class ViewGenerator(BaseGenerator):
             all_measures = migration_data.get("measures", [])
             all_calculated_fields = migration_data.get("calculated_fields", [])
 
+            # Create AST converter with calculated fields context
+            self.ast_converter = ASTToLookMLConverter(all_calculated_fields)
+
             # Determine which views need to be generated
             view_names_needed = self._determine_view_names(migration_data)
 
@@ -258,6 +261,9 @@ class ViewGenerator(BaseGenerator):
             calculation = calc_field.get("calculation", {})
             ast_data = calculation.get("ast", {})
 
+            if calc_field.get("name") == "om_officeto_numeric":
+                print("here")
+
             if not ast_data:
                 logger.warning(
                     f"No AST data found for calculated field: {calc_field.get('name')}"
@@ -436,7 +442,6 @@ TODO: Manual migration required - please convert this formula manually""",
         if calc_field.get("role") != "measure":
             return False
 
-        original_formula = calculation.get("original_formula", "")
         dependencies = calculation.get("dependencies", [])
 
         # If no field references, no need for two-step pattern
@@ -444,10 +449,11 @@ TODO: Manual migration required - please convert this formula manually""",
             return False
 
         # If formula already contains aggregation, no need for two-step pattern
-        agg_functions = ["SUM(", "COUNT(", "AVG(", "MIN(", "MAX(", "MEDIAN("]
-        has_aggregation = any(
-            func in original_formula.upper() for func in agg_functions
-        )
+        # agg_functions = ["SUM(", "COUNT(", "AVG(", "MIN(", "MAX(", "MEDIAN("]
+        # has_aggregation = any(
+        #    func in original_formula.upper() for func in agg_functions
+        # )
+        has_aggregation = False
 
         if has_aggregation:
             return False

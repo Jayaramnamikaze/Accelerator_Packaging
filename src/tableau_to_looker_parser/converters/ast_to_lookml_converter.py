@@ -11,6 +11,7 @@ from ..models.ast_schema import ASTNode, NodeType, DataType
 from typing import Optional
 import re
 from ..core.field_name_mapper import field_name_mapper
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +27,10 @@ class ASTToLookMLConverter:
     4. Function registry for Tableau → LookML function mapping
     """
 
-    def __init__(self):
+    def __init__(self, all_calculated_fields: List[Dict] = None):
         """Initialize the converter with function mappings."""
         self.function_registry = self._build_function_registry()
+        self.all_calculated_fields = all_calculated_fields
         logger.debug("AST to LookML converter initialized")
 
     def convert_to_lookml(
@@ -256,12 +258,24 @@ class ASTToLookMLConverter:
 
         # Build LookML field reference
         # Check if this is a calculated field using the field name mapper
-        if field_name_mapper.is_calculated_field(node.field_name):
+        field_details = dict()
+        if self.all_calculated_fields:
+            for calculated_field in self.all_calculated_fields:
+                if calculated_field.get("original_name") == node.original_name:
+                    field_details = {
+                        "name": calculated_field.get("name"),
+                        "role": calculated_field.get("role"),
+                    }
+                    break
+        if field_details and field_details.get("role") == "measure":
+            lookml_ref = f"${{{clean_field_name}_calc}}"
+        elif field_name_mapper.is_calculated_field(node.field_name):
             # For calculated fields, use global reference without table context
             lookml_ref = f"${{{clean_field_name}}}"
         else:
             # For table fields, use table context
-            lookml_ref = f"${{{table_context}}}.{clean_field_name}"
+            original_name = node.original_name.strip("[]")
+            lookml_ref = f"${{{table_context}}}.`{original_name}`"
 
         logger.debug(f"Converted field reference: {node.field_name} → {lookml_ref}")
 

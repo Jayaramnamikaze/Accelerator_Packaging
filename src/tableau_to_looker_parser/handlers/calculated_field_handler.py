@@ -123,6 +123,9 @@ class CalculatedFieldHandler(BaseHandler):
 
         original_name = data.get("name", "")  # Always preserve Tableau's internal ID
 
+        if field_name == "om_credit_app_numeric":
+            print("here")
+
         # Register the field mapping if we have both original name and clean name
         if original_name and field_name:
             field_name_mapper.register_field(

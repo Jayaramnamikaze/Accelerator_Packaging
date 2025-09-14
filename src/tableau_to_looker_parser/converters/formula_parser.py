@@ -955,9 +955,17 @@ class FormulaParser:
                 n.condition,
                 n.then_branch,
                 n.else_branch,
+                n.case_expression,
             ]:
                 if child:
                     visit(child)
+
+            # Visit when clauses for CASE expressions
+            for when_clause in n.when_clauses:
+                if when_clause.condition:
+                    visit(when_clause.condition)
+                if when_clause.result:
+                    visit(when_clause.result)
 
             for child in n.arguments:
                 visit(child)
