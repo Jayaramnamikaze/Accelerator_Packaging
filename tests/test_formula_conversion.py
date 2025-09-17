@@ -55,10 +55,10 @@ class TestFormulaConversion:
     def test_field_references(self, formula_parser, ast_converter):
         """Test basic field reference conversion."""
         test_cases = [
-            ("[Sales]", "${TABLE}.sales"),
-            ("[Order Date]", "${TABLE}.order_date"),
-            ("[Customer Name]", "${TABLE}.customer_name"),
-            ("[Product ID]", "${TABLE}.product_id"),
+            ("[Sales]", "${TABLE}.`Sales`"),
+            ("[Order Date]", "${TABLE}.`Order Date`"),
+            ("[Customer Name]", "${TABLE}.`Customer Name`"),
+            ("[Product ID]", "${TABLE}.`Product ID`"),
         ]
 
         for tableau_formula, expected_lookml in test_cases:
@@ -76,21 +76,27 @@ class TestFormulaConversion:
     def test_aggregation_functions(self, formula_parser, ast_converter):
         """Test aggregation function conversion."""
         test_cases = [
-            ("SUM([Sales])", "SUM(${TABLE}.sales)"),
-            ("COUNT([Orders])", "COUNT(${TABLE}.orders)"),
-            ("AVG([Profit])", "AVG(${TABLE}.profit)"),
-            ("MIN([Date])", "MIN(${TABLE}.date)"),
-            ("MAX([Price])", "MAX(${TABLE}.price)"),
-            ("MEDIAN([Revenue])", "MEDIAN(${TABLE}.revenue)"),
+            ("SUM([Sales])", "SUM(${TABLE}.`Sales`)"),
+            ("COUNT([Orders])", "COUNT(${TABLE}.`Orders`)"),
+            ("AVG([Profit])", "AVG(${TABLE}.`Profit`)"),
+            ("MIN([Date])", "MIN(${TABLE}.`Date`)"),
+            ("MAX([Price])", "MAX(${TABLE}.`Price`)"),
+            ("MEDIAN([Revenue])", "MEDIAN(${TABLE}.`Revenue`)"),
             # New functions from Excel mapping
-            ("COUNTD([Customer ID])", "COUNT(DISTINCT ${TABLE}.customer_id)"),
-            ("STDEV([Sales])", "STDDEV_SAMP(${TABLE}.sales)"),
-            ("STDEVP([Sales])", "STDDEV_POP(${TABLE}.sales)"),
-            ("VAR([Profit])", "VAR_SAMP(${TABLE}.profit)"),
-            ("VARP([Profit])", "VAR_POP(${TABLE}.profit)"),
-            ("CORR([Sales], [Profit])", "CORR(${TABLE}.sales, ${TABLE}.profit)"),
-            ("COVAR([Sales], [Profit])", "COVAR_SAMP(${TABLE}.sales, ${TABLE}.profit)"),
-            ("COVARP([Sales], [Profit])", "COVAR_POP(${TABLE}.sales, ${TABLE}.profit)"),
+            ("COUNTD([Customer ID])", "COUNT(DISTINCT ${TABLE}.`Customer ID`)"),
+            ("STDEV([Sales])", "STDDEV_SAMP(${TABLE}.`Sales`)"),
+            ("STDEVP([Sales])", "STDDEV_POP(${TABLE}.`Sales`)"),
+            ("VAR([Profit])", "VAR_SAMP(${TABLE}.`Profit`)"),
+            ("VARP([Profit])", "VAR_POP(${TABLE}.`Profit`)"),
+            ("CORR([Sales], [Profit])", "CORR(${TABLE}.`Sales`, ${TABLE}.`Profit`)"),
+            (
+                "COVAR([Sales], [Profit])",
+                "COVAR_SAMP(${TABLE}.`Sales`, ${TABLE}.`Profit`)",
+            ),
+            (
+                "COVARP([Sales], [Profit])",
+                "COVAR_POP(${TABLE}.`Sales`, ${TABLE}.`Profit`)",
+            ),
         ]
 
         for tableau_formula, expected_lookml in test_cases:
@@ -108,28 +114,28 @@ class TestFormulaConversion:
     def test_string_functions(self, formula_parser, ast_converter):
         """Test string function conversion."""
         test_cases = [
-            ("UPPER([Name])", "UPPER(${TABLE}.name)"),
-            ("LOWER([Category])", "LOWER(${TABLE}.category)"),
-            ("LEN([Title])", "LENGTH(${TABLE}.title)"),
-            ("TRIM([Description])", "TRIM(${TABLE}.description)"),
-            ("LEFT([Code], 3)", "LEFT(${TABLE}.code, 3)"),
-            ("RIGHT([Code], 2)", "RIGHT(${TABLE}.code, 2)"),
-            ("MID([Text], 2, 5)", "SUBSTR(${TABLE}.text, 2, 5)"),
+            ("UPPER([Name])", "UPPER(${TABLE}.`Name`)"),
+            ("LOWER([Category])", "LOWER(${TABLE}.`Category`)"),
+            ("LEN([Title])", "LENGTH(${TABLE}.`Title`)"),
+            ("TRIM([Description])", "TRIM(${TABLE}.`Description`)"),
+            ("LEFT([Code], 3)", "LEFT(${TABLE}.`Code`, 3)"),
+            ("RIGHT([Code], 2)", "RIGHT(${TABLE}.`Code`, 2)"),
+            ("MID([Text], 2, 5)", "SUBSTR(${TABLE}.`Text`, 2, 5)"),
             # Advanced string functions
-            ("CONTAINS([Name], 'John')", "STRPOS(${TABLE}.name, 'John') > 0"),
-            ("STARTSWITH([Code], 'A')", "STARTS_WITH(${TABLE}.code, 'A')"),
+            ("CONTAINS([Name], 'John')", "STRPOS(${TABLE}.`Name`, 'John') > 0"),
+            ("STARTSWITH([Code], 'A')", "STARTS_WITH(${TABLE}.`Code`, 'A')"),
             (
                 "ENDSWITH([File], '.pdf')",
-                "ENDS_WITH(${TABLE}.file, '.pdf')",
+                "ENDS_WITH(${TABLE}.`File`, '.pdf')",
             ),
-            ("REPLACE([Text], 'old', 'new')", "REPLACE(${TABLE}.text, 'old', 'new')"),
-            ("FIND([Text], 'word')", "STRPOS(${TABLE}.text, 'word')"),
-            ("LTRIM([Text])", "LTRIM(${TABLE}.text)"),
-            ("RTRIM([Text])", "RTRIM(${TABLE}.text)"),
+            ("REPLACE([Text], 'old', 'new')", "REPLACE(${TABLE}.`Text`, 'old', 'new')"),
+            ("FIND([Text], 'word')", "STRPOS(${TABLE}.`Text`, 'word')"),
+            ("LTRIM([Text])", "LTRIM(${TABLE}.`Text`)"),
+            ("RTRIM([Text])", "RTRIM(${TABLE}.`Text`)"),
             # New functions from Excel mapping
-            ("ASCII([Char])", "ASCII(${TABLE}.char)"),
+            ("ASCII([Char])", "ASCII(${TABLE}.`Char`)"),
             ("CHAR(65)", "CHR(65)"),
-            ("PROPER([Name])", "INITCAP(${TABLE}.name)"),
+            ("PROPER([Name])", "INITCAP(${TABLE}.`Name`)"),
         ]
 
         for tableau_formula, expected_lookml in test_cases:
@@ -147,12 +153,12 @@ class TestFormulaConversion:
     def test_math_functions(self, formula_parser, ast_converter):
         """Test mathematical function conversion."""
         test_cases = [
-            ("ABS([Profit])", "ABS(${TABLE}.profit)"),
-            ("ROUND([Sales], 2)", "ROUND(${TABLE}.sales, 2)"),
-            ("CEILING([Price])", "CEIL(${TABLE}.price)"),
-            ("FLOOR([Amount])", "FLOOR(${TABLE}.amount)"),
-            ("SQRT([Value])", "SQRT(${TABLE}.value)"),
-            ("POWER([Base], 2)", "POW(${TABLE}.base, 2)"),
+            ("ABS([Profit])", "ABS(${TABLE}.`Profit`)"),
+            ("ROUND([Sales], 2)", "ROUND(${TABLE}.`Sales`, 2)"),
+            ("CEILING([Price])", "CEIL(${TABLE}.`Price`)"),
+            ("FLOOR([Amount])", "FLOOR(${TABLE}.`Amount`)"),
+            ("SQRT([Value])", "SQRT(${TABLE}.`Value`)"),
+            ("POWER([Base], 2)", "POW(${TABLE}.`Base`, 2)"),
         ]
 
         for tableau_formula, expected_lookml in test_cases:
@@ -173,123 +179,129 @@ class TestFormulaConversion:
             # DATEPART
             (
                 "DATEPART('year', [Order Date])",
-                "EXTRACT(YEAR FROM ${TABLE}.order_date)",
+                "EXTRACT(YEAR FROM ${TABLE}.`Order Date`)",
             ),
             (
                 "DATEPART('month', [Order Date])",
-                "EXTRACT(MONTH FROM ${TABLE}.order_date)",
+                "EXTRACT(MONTH FROM ${TABLE}.`Order Date`)",
             ),
-            ("DATEPART('day', [Order Date])", "EXTRACT(DAY FROM ${TABLE}.order_date)"),
+            (
+                "DATEPART('day', [Order Date])",
+                "EXTRACT(DAY FROM ${TABLE}.`Order Date`)",
+            ),
             (
                 "DATEPART('week', [Order Date])",
-                "EXTRACT(WEEK FROM ${TABLE}.order_date)",
+                "EXTRACT(WEEK FROM ${TABLE}.`Order Date`)",
             ),
             (
                 "DATEPART('quarter', [Order Date])",
-                "EXTRACT(QUARTER FROM ${TABLE}.order_date)",
+                "EXTRACT(QUARTER FROM ${TABLE}.`Order Date`)",
             ),
             (
                 "DATEPART('hour', [Order Date])",
-                "EXTRACT(HOUR FROM ${TABLE}.order_date)",
+                "EXTRACT(HOUR FROM ${TABLE}.`Order Date`)",
             ),
             (
                 "DATEPART('minute', [Order Date])",
-                "EXTRACT(MINUTE FROM ${TABLE}.order_date)",
+                "EXTRACT(MINUTE FROM ${TABLE}.`Order Date`)",
             ),
             (
                 "DATEPART('second', [Order Date])",
-                "EXTRACT(SECOND FROM ${TABLE}.order_date)",
+                "EXTRACT(SECOND FROM ${TABLE}.`Order Date`)",
             ),
             # DATETRUNC
             (
                 "DATETRUNC('year', [Order Date])",
-                "DATE_TRUNC(${TABLE}.order_date, year)",
+                "DATE_TRUNC(${TABLE}.`Order Date`, year)",
             ),
             (
                 "DATETRUNC('month', [Order Date])",
-                "DATE_TRUNC(${TABLE}.order_date, month)",
+                "DATE_TRUNC(${TABLE}.`Order Date`, month)",
             ),
-            ("DATETRUNC('day', [Order Date])", "DATE_TRUNC(${TABLE}.order_date, day)"),
+            (
+                "DATETRUNC('day', [Order Date])",
+                "DATE_TRUNC(${TABLE}.`Order Date`, day)",
+            ),
             (
                 "DATETRUNC('week', [Order Date])",
-                "DATE_TRUNC(${TABLE}.order_date, week)",
+                "DATE_TRUNC(${TABLE}.`Order Date`, week)",
             ),
             (
                 "DATETRUNC('quarter', [Order Date])",
-                "DATE_TRUNC(${TABLE}.order_date, quarter)",
+                "DATE_TRUNC(${TABLE}.`Order Date`, quarter)",
             ),
             (
                 "DATETRUNC('hour', [Order Date])",
-                "DATE_TRUNC(${TABLE}.order_date, hour)",
+                "DATE_TRUNC(${TABLE}.`Order Date`, hour)",
             ),
             (
                 "DATETRUNC('minute', [Order Date])",
-                "DATE_TRUNC(${TABLE}.order_date, minute)",
+                "DATE_TRUNC(${TABLE}.`Order Date`, minute)",
             ),
             (
                 "DATETRUNC('second', [Order Date])",
-                "DATE_TRUNC(${TABLE}.order_date, second)",
+                "DATE_TRUNC(${TABLE}.`Order Date`, second)",
             ),
             # DATEDIFF
             (
                 "DATEDIFF('day', [Order Date], [Ship Date])",
-                "DATE_DIFF(${TABLE}.ship_date, ${TABLE}.order_date, DAY)",
+                "DATE_DIFF(${TABLE}.`Ship Date`, ${TABLE}.`Order Date`, DAY)",
             ),
             (
                 "DATEDIFF('month', [Order Date], [Ship Date])",
-                "DATE_DIFF(${TABLE}.ship_date, ${TABLE}.order_date, MONTH)",
+                "DATE_DIFF(${TABLE}.`Ship Date`, ${TABLE}.`Order Date`, MONTH)",
             ),
             (
                 "DATEDIFF('year', [Order Date], [Ship Date])",
-                "DATE_DIFF(${TABLE}.ship_date, ${TABLE}.order_date, YEAR)",
+                "DATE_DIFF(${TABLE}.`Ship Date`, ${TABLE}.`Order Date`, YEAR)",
             ),
             (
                 "DATEDIFF('week', [Order Date], [Ship Date])",
-                "DATE_DIFF(${TABLE}.ship_date, ${TABLE}.order_date, WEEK)",
+                "DATE_DIFF(${TABLE}.`Ship Date`, ${TABLE}.`Order Date`, WEEK)",
             ),
             (
                 "DATEDIFF('hour', [Order_Date], [Ship_Date])",
-                "DATETIME_DIFF(${TABLE}.ship_date, ${TABLE}.order_date, HOUR)",
+                "DATETIME_DIFF(${TABLE}.`Ship_Date`, ${TABLE}.`Order_Date`, HOUR)",
             ),
             (
                 "DATEDIFF('minute', [Order_Date], [Ship_Date])",
-                "DATETIME_DIFF(${TABLE}.ship_date, ${TABLE}.order_date, MINUTE)",
+                "DATETIME_DIFF(${TABLE}.`Ship_Date`, ${TABLE}.`Order_Date`, MINUTE)",
             ),
             (
                 "DATEDIFF('second', [Order_Date], [Ship_Date])",
-                "DATETIME_DIFF(${TABLE}.ship_date, ${TABLE}.order_date, SECOND)",
+                "DATETIME_DIFF(${TABLE}.`Ship_Date`, ${TABLE}.`Order_Date`, SECOND)",
             ),
             # DATEADD
             (
                 "DATEADD('day', 7, [Order Date])",
-                "DATE_ADD(${TABLE}.order_date, INTERVAL 7 DAY)",
+                "DATE_ADD(${TABLE}.`Order Date`, INTERVAL 7 DAY)",
             ),
             (
                 "DATEADD('month', 1, [Order Date])",
-                "DATE_ADD(${TABLE}.order_date, INTERVAL 1 MONTH)",
+                "DATE_ADD(${TABLE}.`Order Date`, INTERVAL 1 MONTH)",
             ),
             (
                 "DATEADD('year', 1, [Order Date])",
-                "DATE_ADD(${TABLE}.order_date, INTERVAL 1 YEAR)",
+                "DATE_ADD(${TABLE}.`Order Date`, INTERVAL 1 YEAR)",
             ),
             (
                 "DATEADD('hour', 1, [Order_Date])",
-                "DATETIME_ADD(${TABLE}.order_date, INTERVAL 1 HOUR)",
+                "DATETIME_ADD(${TABLE}.`Order_Date`, INTERVAL 1 HOUR)",
             ),
             (
                 "DATEADD('minute', 1, [Order_Date])",
-                "DATETIME_ADD(${TABLE}.order_date, INTERVAL 1 MINUTE)",
+                "DATETIME_ADD(${TABLE}.`Order_Date`, INTERVAL 1 MINUTE)",
             ),
             (
                 "DATEADD('second', 1, [Order_Date])",
-                "DATETIME_ADD(${TABLE}.order_date, INTERVAL 1 SECOND)",
+                "DATETIME_ADD(${TABLE}.`Order_Date`, INTERVAL 1 SECOND)",
             ),
             # DAY, MONTH, YEAR, WEEK, QUARTER
-            ("DAY([Order Date])", "EXTRACT(DAY FROM ${TABLE}.order_date)"),
-            ("MONTH([Order Date])", "EXTRACT(MONTH FROM ${TABLE}.order_date)"),
-            ("YEAR([Order Date])", "EXTRACT(YEAR FROM ${TABLE}.order_date)"),
-            ("WEEK([Order Date])", "EXTRACT(WEEK FROM ${TABLE}.order_date)"),
-            ("QUARTER([Order Date])", "EXTRACT(QUARTER FROM ${TABLE}.order_date)"),
+            ("DAY([Order Date])", "EXTRACT(DAY FROM ${TABLE}.`Order Date`)"),
+            ("MONTH([Order Date])", "EXTRACT(MONTH FROM ${TABLE}.`Order Date`)"),
+            ("YEAR([Order Date])", "EXTRACT(YEAR FROM ${TABLE}.`Order Date`)"),
+            ("WEEK([Order Date])", "EXTRACT(WEEK FROM ${TABLE}.`Order Date`)"),
+            ("QUARTER([Order Date])", "EXTRACT(QUARTER FROM ${TABLE}.`Order Date`)"),
             # TODAY and NOW
             ("TODAY()", "CURRENT_DATE()"),
             ("NOW()", "CURRENT_TIMESTAMP()"),
@@ -312,11 +324,11 @@ class TestFormulaConversion:
     def test_type_conversion_functions(self, formula_parser, ast_converter):
         """Test type conversion function conversion."""
         test_cases = [
-            ("FLOAT([Text Value])", "CAST(${TABLE}.text_value AS FLOAT64)"),
-            ("INT([Decimal Value])", "CAST(${TABLE}.decimal_value AS INT64)"),
-            ("STR([Number])", "CAST(${TABLE}.number AS STRING)"),
-            ("DATE([Text Date])", "DATE(${TABLE}.text_date)"),
-            ("DATETIME([Text DateTime])", "DATETIME(${TABLE}.text_datetime)"),
+            ("FLOAT([Text Value])", "CAST(${TABLE}.`Text Value` AS FLOAT64)"),
+            ("INT([Decimal Value])", "CAST(${TABLE}.`Decimal Value` AS INT64)"),
+            ("STR([Number])", "CAST(${TABLE}.`Number` AS STRING)"),
+            ("DATE([Text Date])", "TIMESTAMP(DATE(${TABLE}.`Text Date`))"),
+            ("DATETIME([Text DateTime])", "DATETIME(${TABLE}.`Text DateTime`)"),
         ]
 
         for tableau_formula, expected_lookml in test_cases:
@@ -334,8 +346,8 @@ class TestFormulaConversion:
     def test_logical_functions(self, formula_parser, ast_converter):
         """Test logical function conversion."""
         test_cases = [
-            ("IFNULL([Value], 0)", "IFNULL(${TABLE}.value, 0)"),
-            ("ISNULL([Field])", "${TABLE}.field IS NULL"),
+            ("IFNULL([Value], 0)", "IFNULL(${TABLE}.`Value`, 0)"),
+            ("ISNULL([Field])", "${TABLE}.`Field` IS NULL"),
         ]
 
         for tableau_formula, expected_lookml in test_cases:
@@ -353,12 +365,12 @@ class TestFormulaConversion:
     def test_arithmetic_operations(self, formula_parser, ast_converter):
         """Test arithmetic operation conversion."""
         test_cases = [
-            ("[Sales] + [Profit]", "(${TABLE}.sales + ${TABLE}.profit)"),
-            ("[Revenue] - [Cost]", "(${TABLE}.revenue - ${TABLE}.cost)"),
-            ("[Price] * [Quantity]", "(${TABLE}.price * ${TABLE}.quantity)"),
-            ("[Total] / [Count]", "(${TABLE}.total / ${TABLE}.count)"),
-            ("[Base] ^ 2", "POW(${TABLE}.base, 2)"),
-            ("[Value] % 10", "MOD(${TABLE}.value, 10)"),
+            ("[Sales] + [Profit]", "(${TABLE}.`Sales` + ${TABLE}.`Profit`)"),
+            ("[Revenue] - [Cost]", "(${TABLE}.`Revenue` - ${TABLE}.`Cost`)"),
+            ("[Price] * [Quantity]", "(${TABLE}.`Price` * ${TABLE}.`Quantity`)"),
+            ("[Total] / [Count]", "(${TABLE}.`Total` / NULLIF(${TABLE}.`Count`, 0))"),
+            ("[Base] ^ 2", "POW(${TABLE}.`Base`, 2)"),
+            ("[Value] % 10", "MOD(${TABLE}.`Value`, 10)"),
         ]
 
         for tableau_formula, expected_lookml in test_cases:
@@ -376,12 +388,12 @@ class TestFormulaConversion:
     def test_comparison_operations(self, formula_parser, ast_converter):
         """Test comparison operation conversion."""
         test_cases = [
-            ("[Sales] > 1000", "(${TABLE}.sales > 1000)"),
-            ("[Profit] < 0", "(${TABLE}.profit < 0)"),
-            ("[Status] = 'Active'", "(${TABLE}.status = 'Active')"),
-            ("[Value] != NULL", "(${TABLE}.value != NULL)"),
-            ("[Score] >= 80", "(${TABLE}.score >= 80)"),
-            ("[Rating] <= 5", "(${TABLE}.rating <= 5)"),
+            ("[Sales] > 1000", "(${TABLE}.`Sales` > 1000)"),
+            ("[Profit] < 0", "(${TABLE}.`Profit` < 0)"),
+            ("[Status] = 'Active'", "(${TABLE}.`Status` = 'Active')"),
+            ("[Value] != NULL", "(${TABLE}.`Value` IS NOT NULL)"),
+            ("[Score] >= 80", "(${TABLE}.`Score` >= 80)"),
+            ("[Rating] <= 5", "(${TABLE}.`Rating` <= 5)"),
         ]
 
         for tableau_formula, expected_lookml in test_cases:
@@ -401,13 +413,13 @@ class TestFormulaConversion:
         test_cases = [
             (
                 "[Sales] > 1000 AND [Profit] > 0",
-                "((${TABLE}.sales > 1000) AND (${TABLE}.profit > 0))",
+                "((${TABLE}.`Sales` > 1000) AND (${TABLE}.`Profit` > 0))",
             ),
             (
                 "[Status] = 'A' OR [Status] = 'B'",
-                "((${TABLE}.status = 'A') OR (${TABLE}.status = 'B'))",
+                "((${TABLE}.`Status` = 'A') OR (${TABLE}.`Status` = 'B'))",
             ),
-            ("NOT [Active]", "NOT ${TABLE}.active"),
+            ("NOT [Active]", "NOT ${TABLE}.`Active`"),
         ]
 
         for tableau_formula, expected_lookml in test_cases:
@@ -427,15 +439,15 @@ class TestFormulaConversion:
         test_cases = [
             (
                 "IF [Sales] > 1000 THEN 'High' ELSE 'Low' END",
-                "CASE WHEN (${TABLE}.sales > 1000) THEN 'High' ELSE 'Low' END",
+                "CASE WHEN (${TABLE}.`Sales` > 1000) THEN 'High' ELSE 'Low' END",
             ),
             (
                 "IF [Profit] > 0 THEN 'Profitable' ELSE 'Loss' END",
-                "CASE WHEN (${TABLE}.profit > 0) THEN 'Profitable' ELSE 'Loss' END",
+                "CASE WHEN (${TABLE}.`Profit` > 0) THEN 'Profitable' ELSE 'Loss' END",
             ),
             (
                 "IF [Category] = 'A' THEN 1 ELSE 0 END",
-                "CASE WHEN (${TABLE}.category = 'A') THEN 1 ELSE 0 END",
+                "CASE WHEN (${TABLE}.`Category` = 'A') THEN 1 ELSE 0 END",
             ),
         ]
 
@@ -455,18 +467,21 @@ class TestFormulaConversion:
         """Test complex multi-function formulas."""
         test_cases = [
             # Nested functions
-            ("UPPER(LEFT([Name], 5))", "UPPER(LEFT(${TABLE}.name, 5))"),
+            ("UPPER(LEFT([Name], 5))", "UPPER(LEFT(${TABLE}.`Name`, 5))"),
             # Function with arithmetic
-            ("SUM([Sales] * [Quantity])", "SUM((${TABLE}.sales * ${TABLE}.quantity))"),
+            (
+                "SUM([Sales] * [Quantity])",
+                "SUM((${TABLE}.`Sales` * ${TABLE}.`Quantity`))",
+            ),
             # Complex conditional with functions
             (
                 "IF LEN([Code]) > 5 THEN UPPER([Code]) ELSE LOWER([Code]) END",
-                "CASE WHEN (LENGTH(${TABLE}.code) > 5) THEN UPPER(${TABLE}.code) ELSE LOWER(${TABLE}.code) END",
+                "CASE WHEN (LENGTH(${TABLE}.`Code`) > 5) THEN UPPER(${TABLE}.`Code`) ELSE LOWER(${TABLE}.`Code`) END",
             ),
             # Multiple operations
             (
                 "ROUND([Sales] / [Quantity], 2)",
-                "ROUND((${TABLE}.sales / ${TABLE}.quantity), 2)",
+                "ROUND((${TABLE}.`Sales` / NULLIF(${TABLE}.`Quantity`, 0)), 2)",
             ),
         ]
 

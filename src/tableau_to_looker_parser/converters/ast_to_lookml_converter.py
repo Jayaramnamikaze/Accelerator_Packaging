@@ -11,6 +11,7 @@ from ..models.ast_schema import ASTNode, NodeType, DataType
 from typing import Optional
 import re
 from ..core.field_name_mapper import field_name_mapper
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +27,10 @@ class ASTToLookMLConverter:
     4. Function registry for Tableau → LookML function mapping
     """
 
-    def __init__(self):
+    def __init__(self, all_calculated_fields: List[Dict] = None):
         """Initialize the converter with function mappings."""
         self.function_registry = self._build_function_registry()
+        self.all_calculated_fields = all_calculated_fields
         logger.debug("AST to LookML converter initialized")
 
     def convert_to_lookml(
@@ -99,6 +101,8 @@ class ASTToLookMLConverter:
             return self._convert_window_function(node, table_context)
         elif node.node_type == NodeType.UNARY:
             return self._convert_unary(node, table_context)
+        elif node.node_type == NodeType.LIST:
+            return self._convert_list(node, table_context)
         else:
             # Check if this is a fallback node with migration metadata
             if (
@@ -195,7 +199,7 @@ class ASTToLookMLConverter:
             "FLOAT": "CAST({0} AS FLOAT64)",  # Convert to float
             "INT": "CAST({0} AS INT64)",  # Convert to integer
             "STR": "CAST({0} AS STRING)",  # Convert to string
-            "DATE": "DATE({0})",  # Convert to date
+            "DATE": "TIMESTAMP(DATE({0}))",  # Convert to date and wrap with TIMESTAMP
             "DATETIME": "DATETIME({0})",  # Convert to datetime
             # Logical functions from Excel mapping
             "IFNULL": "IFNULL",  # NULL handling function
@@ -254,12 +258,24 @@ class ASTToLookMLConverter:
 
         # Build LookML field reference
         # Check if this is a calculated field using the field name mapper
-        if field_name_mapper.is_calculated_field(node.field_name):
+        field_details = dict()
+        if self.all_calculated_fields:
+            for calculated_field in self.all_calculated_fields:
+                if calculated_field.get("original_name") == node.original_name:
+                    field_details = {
+                        "name": calculated_field.get("name"),
+                        "role": calculated_field.get("role"),
+                    }
+                    break
+        if field_details and field_details.get("role") == "measure":
+            lookml_ref = f"${{{clean_field_name}_calc}}"
+        elif field_name_mapper.is_calculated_field(node.field_name):
             # For calculated fields, use global reference without table context
             lookml_ref = f"${{{clean_field_name}}}"
         else:
             # For table fields, use table context
-            lookml_ref = f"${{{table_context}}}.{clean_field_name}"
+            original_name = node.original_name.strip("[]")
+            lookml_ref = f"${{{table_context}}}.`{original_name}`"
 
         logger.debug(f"Converted field reference: {node.field_name} → {lookml_ref}")
 
@@ -334,8 +350,20 @@ class ASTToLookMLConverter:
         elif operator == "%":
             # Modulo operator
             return f"MOD({left_expr}, {right_expr})"
+        elif operator == "/":
+            # Always wrap the right operand with NULLIF to prevent division by zero
+            # This works for field references, function calls, and any other expressions
+            return f"({left_expr} / NULLIF({right_expr}, 0))"
+        elif operator == "+":
+            # Check if this is string concatenation
+            if self._is_string_concatenation(node.left, node.right):
+                # Use || for string concatenation in SQL
+                return f"({left_expr} || {right_expr})"
+            else:
+                # Use + for numeric addition
+                return f"({left_expr} + {right_expr})"
         else:
-            # Standard operators: +, -, *, /
+            # Standard operators: -, *
             # Wrap in parentheses to preserve precedence
             return f"({left_expr} {operator} {right_expr})"
 
@@ -363,6 +391,16 @@ class ASTToLookMLConverter:
         if operator == "<>" or operator == "!=":
             # Both Tableau <> and != map to SQL !=
             operator = "!="
+        elif operator.upper() == "IN":
+            # For IN operator, right side should be a list
+            return f"({left_expr} IN {right_expr})"
+
+        # Handle NULL comparisons
+        if self._is_null_comparison(node.left, node.right, operator):
+            if operator == "=" or operator == "==":
+                return f"({left_expr} IS NULL)"
+            elif operator == "!=" or operator == "<>":
+                return f"({left_expr} IS NOT NULL)"
 
         return f"({left_expr} {operator} {right_expr})"
 
@@ -659,7 +697,13 @@ class ASTToLookMLConverter:
                 ):
                     condition_expr = raw_condition_expr
                 else:
-                    condition_expr = f"({base_case_expr} = {raw_condition_expr})"
+                    # Check if this is a NULL comparison
+                    if self._is_null_comparison(
+                        node.case_expression, when_clause.condition, "="
+                    ):
+                        condition_expr = f"({base_case_expr} IS NULL)"
+                    else:
+                        condition_expr = f"({base_case_expr} = {raw_condition_expr})"
             else:
                 condition_expr = raw_condition_expr
 
@@ -1026,6 +1070,30 @@ class ASTToLookMLConverter:
 
         return fallback_sql
 
+    def _convert_list(self, node: ASTNode, table_context: str) -> str:
+        """
+        Convert LIST node to SQL IN clause values.
+
+        Args:
+            node: LIST AST node containing items
+            table_context: Table context (not used for lists)
+
+        Returns:
+            SQL-formatted list of values for IN clause
+        """
+        if not node.items:
+            logger.warning("List node has no items")
+            return "()"
+
+        # Convert each item in the list
+        converted_items = []
+        for item in node.items:
+            converted_item = self._convert_node(item, table_context)
+            converted_items.append(converted_item)
+
+        # Join with commas and wrap in parentheses
+        return f"({', '.join(converted_items)})"
+
     def _convert_parameter_ref(self, node: ASTNode, table_context: str) -> str:
         """
         Convert Tableau parameter reference to LookML parameter.
@@ -1080,3 +1148,117 @@ class ASTToLookMLConverter:
             clean_name = "unknown_parameter"
 
         return clean_name.lower()
+
+    def _is_string_concatenation(self, left_node: ASTNode, right_node: ASTNode) -> bool:
+        """
+        Determine if a + operation is string concatenation based on operand types.
+
+        This method examines the AST nodes to determine if the + operator
+        should be treated as string concatenation (using ||) or numeric addition (using +).
+
+        Args:
+            left_node: Left operand AST node
+            right_node: Right operand AST node
+
+        Returns:
+            bool: True if this should be string concatenation, False for numeric addition
+        """
+        # Check if either operand is a string literal
+        if (
+            left_node.node_type == NodeType.LITERAL
+            and left_node.data_type == DataType.STRING
+        ) or (
+            right_node.node_type == NodeType.LITERAL
+            and right_node.data_type == DataType.STRING
+        ):
+            return True
+
+        # Check if either operand is a string function
+        if (
+            left_node.node_type == NodeType.FUNCTION
+            and self._is_string_function(left_node)
+        ) or (
+            right_node.node_type == NodeType.FUNCTION
+            and self._is_string_function(right_node)
+        ):
+            return True
+
+        # Check if either operand is an arithmetic operation that results in string concatenation
+        if (
+            left_node.node_type == NodeType.ARITHMETIC
+            and self._is_string_concatenation(left_node.left, left_node.right)
+        ) or (
+            right_node.node_type == NodeType.ARITHMETIC
+            and self._is_string_concatenation(right_node.left, right_node.right)
+        ):
+            return True
+
+        # Default to numeric addition if we can't determine
+        return False
+
+    def _is_string_function(self, node: ASTNode) -> bool:
+        """
+        Check if a function returns a string.
+
+        Args:
+            node: Function AST node
+
+        Returns:
+            bool: True if function returns string, False otherwise
+        """
+        string_functions = {
+            "STR",
+            "STRING",
+            "TEXT",
+            "UPPER",
+            "LOWER",
+            "TRIM",
+            "LTRIM",
+            "RTRIM",
+            "LEFT",
+            "RIGHT",
+            "MID",
+            "SUBSTR",
+            "REPLACE",
+            "CONCAT",
+            "CONCATENATE",
+            "DATE",
+            "DATETIME",
+            "FORMAT",
+            "TEXT",
+            "CHAR",
+            "CHR",
+            "ASCII",
+            "PROPER",
+            "INITCAP",
+            "FIND",
+            "SEARCH",
+            "SPLIT",
+        }
+
+        return node.function_name in string_functions
+
+    def _is_null_comparison(
+        self, left_node: ASTNode, right_node: ASTNode, operator: str
+    ) -> bool:
+        """
+        Check if this is a comparison with NULL.
+
+        Args:
+            left_node: Left operand AST node
+            right_node: Right operand AST node
+            operator: Comparison operator
+
+        Returns:
+            bool: True if this is a NULL comparison, False otherwise
+        """
+        # Check if either operand is NULL
+        left_is_null = (
+            left_node.node_type == NodeType.LITERAL and left_node.value is None
+        )
+        right_is_null = (
+            right_node.node_type == NodeType.LITERAL and right_node.value is None
+        )
+
+        # Only handle = and != operators for NULL comparisons
+        return (left_is_null or right_is_null) and operator in ["=", "==", "!=", "<>"]

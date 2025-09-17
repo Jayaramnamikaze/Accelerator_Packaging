@@ -81,6 +81,7 @@ class FormulaLexer:
         (r"(?i)\bAND\b", TokenType.AND),
         (r"(?i)\bOR\b", TokenType.OR),
         (r"(?i)\bNOT\b", TokenType.NOT),
+        (r"(?i)\bIN\b", TokenType.IN),
         (r"(?i)\bTRUE\b", TokenType.BOOLEAN),
         (r"(?i)\bFALSE\b", TokenType.BOOLEAN),
         (r"(?i)\bNULL\b", TokenType.NULL),
@@ -398,14 +399,36 @@ class FormulaParser:
         """Parse equality and comparison expressions."""
         left = self.parse_comparison()
 
-        while self.match(TokenType.EQUAL, TokenType.NOT_EQUAL):
+        while self.match(TokenType.EQUAL, TokenType.NOT_EQUAL, TokenType.IN):
             operator = self.previous().value
-            right = self.parse_comparison()
+            if operator.upper() == "IN":
+                # For IN operator, parse a list of values in parentheses
+                right = self.parse_in_list()
+            else:
+                right = self.parse_comparison()
             left = ASTNode(
                 node_type=NodeType.COMPARISON, operator=operator, left=left, right=right
             )
 
         return left
+
+    def parse_in_list(self) -> ASTNode:
+        """Parse a list of values for IN operator: ('value1', 'value2', 'value3')"""
+        self.consume(TokenType.LEFT_PAREN, "Expected '(' after IN operator")
+
+        values = []
+        if not self.check(TokenType.RIGHT_PAREN):
+            # Parse first value
+            values.append(self.parse_expression())
+
+            # Parse remaining values separated by commas
+            while self.match(TokenType.COMMA):
+                values.append(self.parse_expression())
+
+        self.consume(TokenType.RIGHT_PAREN, "Expected ')' to close IN list")
+
+        # Create a list node containing all values
+        return ASTNode(node_type=NodeType.LIST, items=values)
 
     def parse_comparison(self) -> ASTNode:
         """Parse comparison expressions."""
@@ -932,9 +955,17 @@ class FormulaParser:
                 n.condition,
                 n.then_branch,
                 n.else_branch,
+                n.case_expression,
             ]:
                 if child:
                     visit(child)
+
+            # Visit when clauses for CASE expressions
+            for when_clause in n.when_clauses:
+                if when_clause.condition:
+                    visit(when_clause.condition)
+                if when_clause.result:
+                    visit(when_clause.result)
 
             for child in n.arguments:
                 visit(child)
