@@ -156,6 +156,10 @@ class ViewGenerator(BaseGenerator):
         derived_table_sql = None
         is_derived_table = False
 
+        if actual_table.get("relation_type") in ["custom_sql", "Custom_Sql"]:
+            derived_table_sql = actual_table.get("sql_query")  # The SQL query
+            is_derived_table = True
+
         for calc_field in all_calculated_fields:
             # Include calculated fields with matching table_name or with placeholder "__UNASSIGNED_TABLE__"
             if (
