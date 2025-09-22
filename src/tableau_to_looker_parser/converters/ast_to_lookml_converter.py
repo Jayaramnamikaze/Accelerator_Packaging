@@ -530,8 +530,14 @@ class ASTToLookMLConverter:
                         "'\""
                     )  # Remove quotes from unit
                     return f"DATE_TRUNC({unit_expr}, {date_expr})"
+                elif len(converted_args) == 3:
+                    date_expr = converted_args[0]
+                    date_expr = date_expr.strip("'\"")
+                    unit_expr = converted_args[1].strip("'\"")
+                    week_start_expr = converted_args[2].strip("'\"")
+                    return f"DATE_TRUNC({unit_expr}, {date_expr}({week_start_expr}))"
                 else:
-                    return f"/* DATETRUNC: expects 2 arguments, got {len(converted_args)} */"
+                    return f"/* DATETRUNC: expects 2 or 3 arguments, got {len(converted_args)} */"
             elif lookml_function == "DATENAME_SPECIAL":
                 if len(converted_args) == 2:
                     date_expr = converted_args[0]
