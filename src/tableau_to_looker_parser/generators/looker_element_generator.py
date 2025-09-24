@@ -742,17 +742,26 @@ class LookerElementGenerator:
         Apply stacking logic based on pivot field source matching.
 
         Logic:
-        - If pivot_field_source matches either column_shelf or row_shelf: stacking = ""
+        - If pivot_field_source is column_shelf but NOT in color_marks: no stacking property
+        - If pivot_field_source matches either column_shelf or row_shelf AND includes color_marks: stacking = ""
         - If pivot_field_source does not match: stacking = "normal"
         - If no pivot_field_source or not stacked: no stacking property
         """
         try:
-            # Get pivot field sources from YAML detection
             pivot_field_sources = yaml_detection.get("pivot_field_source", [])
 
             if not pivot_field_sources:
-                # No pivot field source, use normal stacking
-                element["stacking"] = "normal"
+                return
+
+            has_shelf = any(
+                pivot_source in ["columns_shelf", "rows_shelf"]
+                for pivot_source in pivot_field_sources
+            )
+            has_color_marks = any(
+                pivot_source == "color_marks" for pivot_source in pivot_field_sources
+            )
+
+            if has_shelf and not has_color_marks:
                 return
 
             pivot_matches_shelf = False
@@ -762,7 +771,7 @@ class LookerElementGenerator:
             ):
                 pivot_matches_shelf = True
 
-            if pivot_matches_shelf:
+            if pivot_matches_shelf and has_color_marks:
                 element["stacking"] = "' '"
             else:
                 element["stacking"] = "normal"
