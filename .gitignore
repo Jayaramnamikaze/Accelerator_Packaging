@@ -37,3 +37,11 @@ connected_devices_dashboard/Sales Summary_final.twb
 uv.lock
 uv.lock
 connected_devices_dashboard/Sales_Summary_final.twb
+comprehensive_dashboard_test_output/
+connected_devices_dashboard/
+sample_twb_files/
+Intraday_Sales.twb
+migration.py
+test_dashboard_comprehensive.py
+test_dashboard_comprehensive.py
+validator.py
