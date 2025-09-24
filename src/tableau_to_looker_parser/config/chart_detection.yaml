@@ -40,6 +40,17 @@ basic_chart_detection:
     fields_sources: ["rows_shelf","column_shelf", "text_marks"]
     pivot_field_source: ["columns_shelf"]
 
+  crosstab_table_with_alternating_square_text:
+    conditions:
+      - has_alternating_square_text: true
+      - rows_shelf_has_string: true
+      - has_alternating_square_text: true
+    confidence: 80
+    looker_equivalent: "looker_grid"
+    fields_sources: ["rows_shelf","column_shelf", "text_marks"]
+    pivot_required: false
+
+
   # Bar Chart Detection (Your Favorite)
 
   stacked_1dim_bar_chart:
@@ -63,7 +74,7 @@ basic_chart_detection:
       - has_color_encoding: true
       - columns_shelf_count: ">0"
       - x_encoding: ["categorical", "string"]
-      - y_encoding: "measure"
+      # - y_encoding: "measure"
     confidence: 100
     stacked_type: true
     pivot_required: true
@@ -93,6 +104,7 @@ basic_chart_detection:
       - y_encoding: "measure"
       - orientation: "vertical"
     confidence: 100
+    stacked_type: true
     variants:
       - simple_column:
           conditions:
@@ -127,6 +139,7 @@ basic_chart_detection:
       - x_encoding: ["temporal", "continuous", "date"]
       - y_encoding: "measure"
     confidence: 100
+    stacked_type: true
     variants:
       - single_line:
           conditions:
@@ -150,6 +163,7 @@ basic_chart_detection:
       - x_encoding: ["temporal", "continuous"]
       - y_encoding: "measure"
     confidence: 100
+    stacked_type: true
     variants:
       - single_area:
           conditions:

@@ -206,13 +206,14 @@ view: {{ view_name }} {
   measure: {{ calc_field.name }} {
     description: "{{ calc_field.description | escape_quotes }}"
     {% if calc_field.is_two_step_measure %}
-    type: number
+    type: {{ calc_field.lookml_type }}
     sql: ${{ '{' + (calc_field.references_dimension | clean_name) + '}' }} ;;
     {% elif calc_field.lookml_type %}
     type: number
     sql: {{ calc_field.sql }} ;;
     {% elif calc_field.datatype == 'integer' or calc_field.datatype == 'real' %}
     type: number
+    value_format_name: decimal_0
     sql: {{ calc_field.sql }} ;;
     {% else %}
     type: number
@@ -249,9 +250,7 @@ view: {{ view_name }} {
     type: number
     sql: ${TABLE}.{{ (measure.sql_column or measure.name) | sql_column }} ;;
     {% endif %}
-    {% if measure.value_format %}
-    value_format: "{{ measure.value_format }}"
-    {% endif %}
+    value_format_name: decimal_0
     {% if measure.hidden %}
     hidden: yes
     {% endif %}

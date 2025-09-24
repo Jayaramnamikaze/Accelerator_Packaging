@@ -39,7 +39,7 @@ class TestStringFunctions:
         ast_root = result.calculated_field.ast_root
 
         lookml_sql = self.converter.convert_to_lookml(ast_root)
-        expected = "STRPOS(${TABLE}.product_name, 'Widget') > 0"
+        expected = "STRPOS(${TABLE}.`Product Name`, 'Widget') > 0"
 
         assert lookml_sql == expected
 
@@ -52,7 +52,7 @@ class TestStringFunctions:
         ast_root = result.calculated_field.ast_root
 
         lookml_sql = self.converter.convert_to_lookml(ast_root)
-        expected = "STARTS_WITH(${TABLE}.customer_name, 'John')"
+        expected = "STARTS_WITH(${TABLE}.`Customer Name`, 'John')"
 
         assert lookml_sql == expected
 
@@ -65,7 +65,7 @@ class TestStringFunctions:
         ast_root = result.calculated_field.ast_root
 
         lookml_sql = self.converter.convert_to_lookml(ast_root)
-        expected = "ENDS_WITH(${TABLE}.product_name, 'Pro')"
+        expected = "ENDS_WITH(${TABLE}.`Product Name`, 'Pro')"
 
         assert lookml_sql == expected
 
@@ -78,7 +78,7 @@ class TestStringFunctions:
         ast_root = result.calculated_field.ast_root
 
         lookml_sql = self.converter.convert_to_lookml(ast_root)
-        expected = "REPLACE(${TABLE}.product_name, 'Widget', 'Gadget')"
+        expected = "REPLACE(${TABLE}.`Product Name`, 'Widget', 'Gadget')"
 
         assert lookml_sql == expected
 
@@ -91,7 +91,7 @@ class TestStringFunctions:
         ast_root = result.calculated_field.ast_root
 
         lookml_sql = self.converter.convert_to_lookml(ast_root)
-        expected = "STRPOS(${TABLE}.product_name, 'Widget')"
+        expected = "STRPOS(${TABLE}.`Product Name`, 'Widget')"
 
         assert lookml_sql == expected
 
@@ -104,7 +104,7 @@ class TestStringFunctions:
         ast_root = result.calculated_field.ast_root
 
         lookml_sql = self.converter.convert_to_lookml(ast_root)
-        expected = "SPLIT(${TABLE}.customer_name, ' ')[OFFSET(CASE WHEN 1 < 0 THEN ARRAY_LENGTH(SPLIT(${TABLE}.customer_name, ' ')) + 1 ELSE 1 - 1 END)]"
+        expected = "SPLIT(${TABLE}.`Customer Name`, ' ')[OFFSET(CASE WHEN 1 < 0 THEN ARRAY_LENGTH(SPLIT(${TABLE}.`Customer Name`, ' ')) + 1 ELSE 1 - 1 END)]"
 
         assert lookml_sql == expected
 
@@ -117,7 +117,7 @@ class TestStringFunctions:
         ast_root = result.calculated_field.ast_root
 
         lookml_sql = self.converter.convert_to_lookml(ast_root)
-        expected = "LTRIM(${TABLE}.product_name)"
+        expected = "LTRIM(${TABLE}.`Product Name`)"
 
         assert lookml_sql == expected
 
@@ -130,7 +130,7 @@ class TestStringFunctions:
         ast_root = result.calculated_field.ast_root
 
         lookml_sql = self.converter.convert_to_lookml(ast_root)
-        expected = "RTRIM(${TABLE}.product_name)"
+        expected = "RTRIM(${TABLE}.`Product Name`)"
 
         assert lookml_sql == expected
 
@@ -148,7 +148,7 @@ class TestStringFunctions:
         assert ast_root.condition.function_name == "CONTAINS"
 
         lookml_sql = self.converter.convert_to_lookml(ast_root)
-        expected = "CASE WHEN STRPOS(UPPER(${TABLE}.product_name), 'WIDGET') > 0 THEN 'Widget Product' ELSE 'Other' END"
+        expected = "CASE WHEN STRPOS(UPPER(${TABLE}.`Product Name`), 'WIDGET') > 0 THEN 'Widget Product' ELSE 'Other' END"
 
         assert lookml_sql == expected
 
@@ -167,7 +167,7 @@ class TestStringFunctions:
         assert ast_root.arguments[0].function_name == "UPPER"
 
         lookml_sql = self.converter.convert_to_lookml(ast_root)
-        expected = "REPLACE(UPPER(${TABLE}.product_name), 'WIDGET', 'GADGET')"
+        expected = "REPLACE(UPPER(${TABLE}.`Product Name`), 'WIDGET', 'GADGET')"
 
         assert lookml_sql == expected
 
@@ -184,7 +184,7 @@ class TestStringFunctions:
         assert ast_root.arguments[1].node_type == NodeType.FIELD_REF
 
         lookml_sql = self.converter.convert_to_lookml(ast_root)
-        expected = "STRPOS(${TABLE}.product_name, ${TABLE}.category) > 0"
+        expected = "STRPOS(${TABLE}.`Product Name`, ${TABLE}.`Category`) > 0"
 
         assert lookml_sql == expected
 
@@ -240,7 +240,7 @@ class TestStringFunctions:
         ast_root = result.calculated_field.ast_root
         lookml_sql = self.converter.convert_to_lookml(ast_root)
 
-        expected = "CASE WHEN STARTS_WITH(LTRIM(${TABLE}.customer_name), 'VIP') THEN 'VIP Customer' ELSE 'Regular' END"
+        expected = "CASE WHEN STARTS_WITH(LTRIM(${TABLE}.`Customer Name`), 'VIP') THEN 'VIP Customer' ELSE 'Regular' END"
         assert lookml_sql == expected
 
         # Check dependencies

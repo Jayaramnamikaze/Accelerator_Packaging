@@ -124,6 +124,7 @@ class LookerElementGenerator:
         # Add position information
         element.update(position)
 
+        # Apply stacking logic based on pivot field source matching
         self._apply_stacking_logic(element, worksheet, yaml_detection)
 
         logger.debug(
@@ -753,13 +754,12 @@ class LookerElementGenerator:
         - If no pivot_field_source or not stacked: no stacking property
         """
         try:
-            # Get pivot field sources from YAML detection
+
             pivot_field_sources = yaml_detection.get("pivot_field_source", [])
 
             if not pivot_field_sources:
-                return  # No pivot field sources, no stacking logic needed
+                return
 
-            # Check if pivot field source is column_shelf but not in color_marks
             has_shelf = any(
                 pivot_source in ["columns_shelf", "rows_shelf"]
                 for pivot_source in pivot_field_sources

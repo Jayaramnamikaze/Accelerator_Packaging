@@ -19,6 +19,7 @@ test_worksheet_handler_output.json
 xml_parser_phase3_sample_output.json
 test_output/processed_pipeline_output.json
 sample_twb_files/Bar_charts.twb
+verizon_test_output/
 
 # Test output directories
 test_output/
@@ -37,11 +38,10 @@ connected_devices_dashboard/Sales Summary_final.twb
 uv.lock
 uv.lock
 connected_devices_dashboard/Sales_Summary_final.twb
-comprehensive_dashboard_test_output/
-connected_devices_dashboard/
-sample_twb_files/
-Intraday_Sales.twb
-migration.py
-test_dashboard_comprehensive.py
-test_dashboard_comprehensive.py
-validator.py
+
+connected_devices_dashboard/view
+connected_devices_dashboard/Balanced_Scorecard_Dashboard_BQ.twb
+connected_devices_dashboard/setup_and_go.twbx
+connected_devices_dashboard/setup_and_go.twb
+connected_devices_dashboard/~setup_and_go__21780.twbr
+
