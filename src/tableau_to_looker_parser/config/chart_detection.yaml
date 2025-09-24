@@ -81,6 +81,21 @@ basic_chart_detection:
     fields_sources: ["color_marks", rows_shelf, "columns_shelf"]
     pivot_field_source: ["color_marks"]
 
+  plain_bar_chart_nocolor:
+    conditions:
+      - mark_type: ["Bar", "Automatic"]
+      - has_color_encoding: false
+      - columns_shelf_count: ">0"
+      - x_encoding: "measure"
+      # Allow both categorical and none for Y to cover typical bar setups
+      - y_encoding: ["categorical", "string", "none"]
+    confidence: 100
+    stacked_type: false
+    pivot_required: true
+    looker_equivalent: "looker_bar"
+    fields_sources: ["columns_shelf", "rows_shelf"]
+    pivot_field_source: ["color_marks"]
+
   # Column Chart (Vertical Bars)
   column_chart:
     conditions:

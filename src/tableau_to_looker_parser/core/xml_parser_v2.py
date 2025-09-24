@@ -1498,6 +1498,9 @@ class TableauXMLParserV2:
                 # Case 3: all same — take any (choose last)
                 if "pie" in unique_vals:
                     chart_type_extracted = "pie"
+                elif "bar" in unique_vals:
+                    chart_type_extracted = "bar"
+
             else:
                 # Case 2: multiple different marks — choose mark_2 where present
                 # chart_values preserve insertion order (mark_1, mark_2, ...)
