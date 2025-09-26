@@ -23,7 +23,7 @@ def test_dashboard_pipeline(test_file=None):
     # Test configuration - use command line arg or default
     if not test_file:
         test_file = (
-            "connected_devices_dashboard/Set Up & Go Launch Dashboard Modified.twbx"
+            "/Users/srinaathvr/Desktop/SquareShift/tableau_to_looker_parser/sample_twb_files/setup_and_go.twb"
         )
 
 

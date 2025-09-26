@@ -566,6 +566,7 @@ TODO: Manual migration required - please convert this formula manually""",
         calc_name = self._extract_calculation_name(calc_field)
         original_formula = calculation.get("original_formula", "")
 
+
         # Create hidden dimension for row-level calculation
         dimension_field = {
             "name": f"{calc_name}_calc",  # Use calculation ID + _calc suffix
@@ -598,6 +599,7 @@ TODO: Manual migration required - please convert this formula manually""",
             ),
             "is_two_step_measure": True,  # Flag for template
             "references_dimension": f"{calc_name}_calc",  # Reference to dimension
+            "default_format": calc_field.get("default_format", ""),
         }
 
         logger.debug(

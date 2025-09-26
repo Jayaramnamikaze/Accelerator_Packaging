@@ -208,8 +208,18 @@ view: {{ view_name }} {
     {% if calc_field.is_two_step_measure %}
     type: {{ calc_field.lookml_type }}
     sql: ${{ '{' + (calc_field.references_dimension | clean_name) + '}' }} ;;
+    {% if calc_field.default_format == 'p0.0%' %}
+    value_format_name: percent_0
+    {% endif %}
     {% elif calc_field.lookml_type %}
     type: number
+    sql: {{ calc_field.sql }} ;;
+    {% if calc_field.default_format == 'p0.0%' %}
+    value_format_name: percent_0
+    {% endif %}
+    {% elif calc_field.default_format == 'p0.0%' %}
+    type: number
+    value_format_name: percent_0
     sql: {{ calc_field.sql }} ;;
     {% elif calc_field.datatype == 'integer' or calc_field.datatype == 'real' %}
     type: number
