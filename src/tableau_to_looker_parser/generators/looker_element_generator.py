@@ -109,11 +109,15 @@ class LookerElementGenerator:
         if pivots:
             element["pivots"] = pivots
 
-        sorts = self._generate_sorts(
-            worksheet, element["fields"], pivots, looker_chart_type
-        )
-        if sorts:
-            element["sorts"] = sorts
+        if count_metadata.get("sorts"):
+            element["sorts"] = count_metadata["sorts"]
+
+        else:
+            sorts = self._generate_sorts(
+                worksheet, element["fields"], pivots, looker_chart_type
+            )
+            if sorts:
+                element["sorts"] = sorts
 
         filters = self._generate_filters(worksheet, field_mappings)
         if filters:
