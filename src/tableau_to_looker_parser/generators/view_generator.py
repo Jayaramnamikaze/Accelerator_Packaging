@@ -145,6 +145,13 @@ class ViewGenerator(BaseGenerator):
             and not measure.get("is_internal", False)
         ]
 
+        count_measures = self._generate_measures_for_filters(
+            migration_data, actual_table_name, view_name
+        )
+
+        # Add count measures to table measures
+        table_measures.extend(count_measures)
+
         # Filter calculated fields for this specific table and convert AST to LookML, excluding internal fields
 
         table_calculated_fields = []
@@ -714,3 +721,73 @@ TODO: Manual migration required - please convert this formula manually""",
                 f"Failed to generate view file for {view_data['name']}: {str(e)}"
             )
             raise
+
+    def _generate_measures_for_filters(
+        self, migration_data: Dict, table_name: str, view_name: str
+    ) -> List[Dict]:
+        count_measures = []
+
+        try:
+            worksheets = migration_data.get("worksheets", [])
+
+            for worksheet in worksheets:
+                worksheet_filters = worksheet.get("filters", [])
+
+                for filter_data in worksheet_filters:
+                    groupfilter_logic = filter_data.get("groupfilter_logic", [])
+
+                    for value in groupfilter_logic:
+                        expression = value.get("expression", "")
+
+                        if "COUNT" in expression.upper():
+                            field_name = self._extract_field_from_count_expression(
+                                expression
+                            )
+                            if field_name:
+                                #     # Clean the field name
+                                # clean_field_name = self._clean_name(field_name)
+
+                                # Create count measure with _1 suffix to avoid redefinition
+                                count_measure = {
+                                    "name": f"{field_name}_count_function",  # Use field name with _count_function suffix
+                                    "field_type": "measure",
+                                    "role": "measure",
+                                    "lookml_type": "count",
+                                    # "table_name": table_name,
+                                    # "order_by_field": f"{field_name}_1"
+                                }
+
+                                count_measures.append(count_measure)
+
+        except Exception as e:
+            logger.warning(f"Error generating count measures: {e}")
+
+        return count_measures
+
+    def _extract_field_from_count_expression(self, expression: str) -> str:
+        """
+        Extract field name from COUNT expression.
+
+        Args:
+            expression: Tableau expression like "COUNT([Field Name])"
+
+        Returns:
+            Field name or None if not found
+        """
+        import re
+
+        # Pattern to match COUNT([Field Name]) or COUNT([Field Name (copy)_123456])
+        pattern = r"COUNT\(\s*\[([^\]]+)\]\s*\)"
+        match = re.search(pattern, expression, re.IGNORECASE)
+
+        if match:
+            field_name = match.group(1).strip()
+            # Clean the field name to match dimension names
+            # Remove Tableau suffixes like (copy)_2681330689597788160
+            pattern3 = r"_\d{9,}$"
+            field_name = re.sub(pattern3, "", field_name)
+
+            # field_name = self._clean_tableau_field_name(field_name)
+            return field_name
+
+        return None
