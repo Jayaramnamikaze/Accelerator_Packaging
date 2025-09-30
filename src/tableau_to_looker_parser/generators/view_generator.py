@@ -267,11 +267,9 @@ class ViewGenerator(BaseGenerator):
     def _convert_calculated_field(
         self,
         calc_field: Dict,
-        view_name: str,
+        table_context: str,
         all_calculated_fields_dict: Dict[str, Dict] = None,
         count_measures: List[Dict] = None,
-        table_context: str = None,
-        additional_param: str = None,
     ) -> Dict:
         """
         Convert a calculated field with AST to LookML format.
@@ -282,11 +280,7 @@ class ViewGenerator(BaseGenerator):
 
         Args:
             calc_field: Calculated field data with AST
-            view_name: Name of the view being generated
-            all_calculated_fields_dict: Dictionary lookup of all calculated fields by name
-            count_measures: List of count measures for filters
             table_context: Table context for field references
-            additional_param: Additional parameter for future use
 
         Returns:
             Dict with converted LookML field data (may contain both dimension and measure)
@@ -330,7 +324,11 @@ class ViewGenerator(BaseGenerator):
                 calc_field, calculation
             ):
                 return self._create_two_step_pattern(
-                    calc_field, lookml_sql, calculation, all_calculated_fields_dict
+                    calc_field,
+                    lookml_sql,
+                    calculation,
+                    all_calculated_fields_dict,
+                    count_measures,
                 )
 
             # Standard single field conversion for dimensions and simple measures
@@ -356,6 +354,12 @@ class ViewGenerator(BaseGenerator):
                 "datasource_id": calc_field.get("datasource_id", ""),
                 "local_name": calc_field.get("local_name", ""),
             }
+
+            count_measure_name = f"{field_name}_count_function"
+            if self._has_corresponding_count_measure(
+                count_measure_name, count_measures
+            ):
+                converted_field["order_by_field"] = count_measure_name
 
             # Add migration metadata for fallback fields
             if is_fallback:
@@ -565,6 +569,7 @@ TODO: Manual migration required - please convert this formula manually""",
         lookml_sql: str,
         calculation: Dict,
         all_calculated_fields_dict: Dict[str, Dict] = None,
+        count_measures: List[Dict] = None,
     ) -> Dict:
         """
         Create two-step pattern: hidden dimension + aggregated measure.
@@ -752,13 +757,13 @@ TODO: Manual migration required - please convert this formula manually""",
                                 expression
                             )
                             if field_name:
+                                field_name = self._clean_name(field_name)
                                 count_measure = {
-                                    "name": f"{field_name}_count_function",
+                                    "name": f"{field_name}count_function",
                                     "field_type": "measure",
                                     "role": "measure",
                                     "lookml_type": "count",
-                                    # "table_name": table_name,
-                                    # "order_by_field": f"{field_name}_1"
+                                    "order_by_field": field_name,
                                 }
 
                                 count_measures.append(count_measure)
@@ -780,3 +785,16 @@ TODO: Manual migration required - please convert this formula manually""",
             return field_name
 
         return None
+
+    def _has_corresponding_count_measure(
+        self, count_measure_name: str, count_measures: List[Dict] = None
+    ) -> bool:
+        if not count_measures:
+            return False
+
+        # Check if the count measure exists in the count measures list
+        for count_measure in count_measures:
+            if count_measure.get("name") == count_measure_name:
+                return True
+
+        return False
