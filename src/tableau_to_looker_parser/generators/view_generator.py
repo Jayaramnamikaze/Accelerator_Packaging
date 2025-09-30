@@ -202,7 +202,7 @@ class ViewGenerator(BaseGenerator):
 
                 converted_field = self._convert_calculated_field(
 
-                    calc_field, view_name, all_calculated_fields_dict, count_measures
+                    calc_field, view_name, all_calculated_fields_dict, count_measures,
                     calc_field,
                     view_name,
                     all_calculated_fields_dict,
