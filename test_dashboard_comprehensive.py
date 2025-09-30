@@ -26,7 +26,6 @@ def test_dashboard_pipeline(test_file=None):
             "connected_devices_dashboard/Set Up & Go Launch Dashboard Modified.twbx"
         )
 
-
     output_dir = "verizon_test_output"
 
     if not os.path.exists(test_file):

@@ -11,6 +11,11 @@ from .base_generator import BaseGenerator
 # from .parameter_generator import generate_looker_parameters
 from ..converters.ast_to_lookml_converter import ASTToLookMLConverter
 from ..models.ast_schema import ASTNode, NodeType
+from .lookml_sql_converter import (
+    LookMLSQLConverter,
+    create_converter,
+    convert_lookml_sql,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +135,8 @@ class ViewGenerator(BaseGenerator):
 
         actual_table_name = actual_table["name"]
 
+        lookmlsqlconverter = create_converter(actual_table)
+
         table_dimensions = [
             dim
             for dim in all_dimensions
@@ -180,6 +187,13 @@ class ViewGenerator(BaseGenerator):
                 converted_field = self._convert_calculated_field(
                     calc_field, view_name, all_calculated_fields_dict
                 )
+
+                # <converted_field>
+                if isinstance(lookmlsqlconverter, LookMLSQLConverter):
+                    converted_field = convert_lookml_sql(
+                        lookmlsqlconverter, converted_field
+                    )
+
                 if converted_field.get("name") == "rptmth_copy":
                     print("here")
                 if converted_field:

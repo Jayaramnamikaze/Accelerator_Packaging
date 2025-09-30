@@ -754,7 +754,6 @@ class LookerElementGenerator:
         - If no pivot_field_source or not stacked: no stacking property
         """
         try:
-
             pivot_field_sources = yaml_detection.get("pivot_field_source", [])
 
             if not pivot_field_sources:
