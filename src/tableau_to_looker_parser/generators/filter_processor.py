@@ -43,6 +43,7 @@ class FilterProcessor:
         """
         lookml_filters = {}
         calculated_fields = calculated_fields or []
+        ignored_fields = ["Measure Names", "Measure Values"]
 
         for filter_data in worksheet_filters:
             try:
