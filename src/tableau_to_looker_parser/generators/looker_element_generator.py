@@ -78,6 +78,13 @@ class LookerElementGenerator:
         status = self._update_worksheet_fields_with_view_mappings(
             worksheet, field_mappings
         )
+
+        for each_field in worksheet.fields:
+            if not each_field.view_mapping_name:
+                logger.warning(
+                    f"Field {each_field.name} {worksheet.name} has no view mapping name"
+                )
+
         if status == "Success":
             logger.debug(
                 f"Updated worksheet fields with view mappings: {worksheet.name}"
@@ -243,10 +250,11 @@ class LookerElementGenerator:
 
             if field_matches:
                 # Use derived field name for proper view reference
-                if self._get_derived_field_name(field):
-                    derived_field_name = self._get_derived_field_name(field)
-                else:
-                    derived_field_name = field.view_mapping_name
+                # if self._get_derived_field_name(field):
+                #    derived_field_name = self._get_derived_field_name(field)
+                # else:
+                #    derived_field_name = field.view_mapping_name
+                derived_field_name = field.view_mapping_name
 
                 full_field_name = f"{self.explore_name}.{derived_field_name}"
                 if full_field_name not in fields:
@@ -596,7 +604,7 @@ class LookerElementGenerator:
         Creates three JSON structures:
         - dimensions: {datasource_id: {"local_name": clean_name}}
         - measures: {datasource_id: {"local_name": clean_name, "aggregation": "sum"}}
-        - calculated_fields: {datasource_id: {"local_name": clean_name}}
+        - calculated_fields: {datasource_id: {"local_name": clean_name, "tableau_instance": tableau_instance}}
 
         Args:
             view_mappings: View mappings from generated views
@@ -640,12 +648,23 @@ class LookerElementGenerator:
                     datasource_id = each_calculated_field.get("datasource_id")
                     local_name = each_calculated_field.get("local_name")
                     clean_name = each_calculated_field.get("name")
+                    is_derived = each_calculated_field.get("is_derived", False)
+                    tableau_instance = each_calculated_field.get("tableau_instance", "")
                     if datasource_id:
                         if datasource_id not in field_mappings["calculated_fields"]:
                             field_mappings["calculated_fields"][datasource_id] = {}
-                        field_mappings["calculated_fields"][datasource_id][
-                            local_name
-                        ] = {"clean_name": self._clean_name(clean_name)}
+                        if is_derived:
+                            field_mappings["calculated_fields"][datasource_id][
+                                tableau_instance
+                            ] = {
+                                "clean_name": self._clean_name(clean_name),
+                                "tableau_instance": tableau_instance,
+                            }
+
+                        else:
+                            field_mappings["calculated_fields"][datasource_id][
+                                local_name
+                            ] = {"clean_name": self._clean_name(clean_name)}
 
         logger.debug(
             f"Constructed field mappings: {len(field_mappings['dimensions'])} dimension sources, "
@@ -687,11 +706,21 @@ class LookerElementGenerator:
             if field.role == "dimension":
                 datasource_id = field.datasource_id
                 local_name = field.original_name
+                worksheet_tableau_instance = field.tableau_instance
                 datasource_fields = dimensions.get(datasource_id, {})
                 clean_name = None
                 if datasource_fields:
                     clean_name = datasource_fields.get(local_name, {}).get("clean_name")
                     field.view_mapping_name = clean_name
+
+                if not clean_name:
+                    calculated_fields_fields = calculated_fields.get(datasource_id, {})
+                    if calculated_fields_fields:
+                        clean_name = calculated_fields_fields.get(
+                            worksheet_tableau_instance, {}
+                        ).get("clean_name")
+                        field.view_mapping_name = clean_name
+
                 if not clean_name:
                     datasource_fields = calculated_fields.get(datasource_id, {})
                     if datasource_fields:
@@ -704,6 +733,7 @@ class LookerElementGenerator:
                 datasource_id = field.datasource_id
                 local_name = field.original_name
                 datasource_fields = measures.get(datasource_id, {})
+                worksheet_tableau_instance = field.tableau_instance
                 clean_name = None
                 aggregation = None
                 if datasource_fields:
@@ -711,13 +741,22 @@ class LookerElementGenerator:
                     aggregation = datasource_fields.get(local_name, {}).get(
                         "aggregation"
                     )
+
+                if not clean_name:
+                    calculated_fields_fields = calculated_fields.get(datasource_id, {})
+                    if calculated_fields_fields:
+                        clean_name = calculated_fields_fields.get(
+                            worksheet_tableau_instance, {}
+                        ).get("clean_name")
+                        aggregation = None
+
                 if not clean_name:
                     datasource_fields = calculated_fields.get(datasource_id, {})
                     if datasource_fields:
-                        clean_name = datasource_fields.get(local_name, {}).get(
+                        clean_name = calculated_fields.get(local_name, {}).get(
                             "clean_name"
                         )
-                        aggregation = datasource_fields.get(local_name, {}).get(
+                        aggregation = calculated_fields.get(local_name, {}).get(
                             "aggregation"
                         )
 

@@ -630,6 +630,8 @@ TODO: Manual migration required - please convert this formula manually""",
             "datasource_id": calc_field.get("datasource_id", ""),
             "local_name": calc_field.get("local_name", ""),
             "default_format": calc_field.get("default_format", ""),
+            "aggregation": calc_field.get("aggregation", ""),
+            "tableau_instance": calc_field.get("tableau_instance", ""),
         }
 
         logger.debug(

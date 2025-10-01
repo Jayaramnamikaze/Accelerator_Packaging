@@ -260,6 +260,7 @@ class TableauXMLParserV2:
             "Mode",
             "Any",
             "All",
+            "AGG",
         ]:
             return self._build_aggregation_calculation(column_ref, derivation)
 
@@ -299,6 +300,7 @@ class TableauXMLParserV2:
             # Logical aggregations
             "Any": f"ANY({column_ref})",
             "All": f"ALL({column_ref})",
+            "AGG": f"AGG({column_ref})",
         }
 
         return aggregation_calc_mapping.get(
