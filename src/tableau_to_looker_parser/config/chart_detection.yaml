@@ -128,7 +128,6 @@ basic_chart_detection:
       - x_encoding: ["temporal", "date", "continuous"]
       - y_encoding: "measure"
       - columns_shelf_count: ">0"
-      - has_mark_stacking: false
     confidence: 100
     stacked_type: false
     looker_equivalent: "looker_line"
