@@ -43,10 +43,10 @@ class FilterProcessor:
         """
         lookml_filters = {}
         calculated_fields = calculated_fields or []
+        ignored_fields = ["Measure Names", "Measure Values"]
 
         for filter_data in worksheet_filters:
             try:
-
                 if filter_data.get("field_name") in ignored_fields:
                     logger.debug(
                         f"Ignoring filter for field: {filter_data.get('field_name')}"

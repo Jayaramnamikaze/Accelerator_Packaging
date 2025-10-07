@@ -346,9 +346,13 @@ class TableauXMLParserV2:
                     lookup_column = col_instance.get("column")
                     key_column = col_instance.get("name")
                     lookup_column_def = column_lookup[lookup_column]
+                    role = lookup_column_def.get("role")
 
                     column_ref = lookup_column.strip("[]")
                     name = f"{column_ref}_{derivation}_Derived"
+
+                    # if role == "measure" and derivation == "User":
+                    # derivation = "AGG"
 
                     aggregation_list = [
                         "sum",

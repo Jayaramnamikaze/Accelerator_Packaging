@@ -30,6 +30,7 @@ class LookerElementGenerator:
             "rows_shelf": {"shelf": "rows"},
             "column_shelf": {"shelf": "columns"},
             "columns_shelf": {"shelf": "columns"},
+            "detail_shelf": {"shelf": "detail"},
             "text_marks": {"encodings_contains": "text"},
             "color_marks": {"encodings_contains": "color"},
             "size_marks": {"encodings_contains": "size"},
@@ -52,8 +53,8 @@ class LookerElementGenerator:
         Returns:
             Dict containing complete dashboard element configuration
         """
-        if worksheet.name == "Channel Outlier Report":
-            print(f"Worksheet {worksheet.name} has data: {worksheet}")
+        if worksheet.name == "RIS % by Month":
+            logger.debug(f"Worksheet {worksheet.name} has data")
 
         if not worksheet.visualization:
             logger.warning(f"Worksheet {worksheet.name} has no visualization config")
@@ -107,9 +108,6 @@ class LookerElementGenerator:
             "limit": 500,
             "column_limit": count_metadata["column_limit"],
         }
-
-        if worksheet.name == "CD detail":
-            print(f"Worksheet {worksheet.name} has styling: {worksheet.styling}")
 
         # Add optional components based on YAML metadata
         pivots = self._generate_pivots(worksheet, yaml_detection)
@@ -249,7 +247,7 @@ class LookerElementGenerator:
             if "encodings_contains" in mapping:
                 field_encodings = field.encodings
                 if "color" in field_encodings:
-                    print(f"Color encoding found in {field.name}")
+                    logger.debug(f"Color encoding found in {field.name}")
                 if mapping["encodings_contains"] in field_encodings:
                     field_matches = True
 
@@ -389,11 +387,6 @@ class LookerElementGenerator:
             return []
 
         pivot_selection_logic = yaml_detection.get("pivot_selection_logic")
-
-        # Debug for CD interval specifically
-        print(f"   source_fields: {source_fields}")
-        print(f"   pivot_selection_logic: {pivot_selection_logic}")
-        print(f"   yaml_detection keys: {list(yaml_detection.keys())}")
 
         if pivot_selection_logic == "all_except_last":
             # For temporal columns: take all fields except the last one
@@ -722,19 +715,20 @@ class LookerElementGenerator:
                 datasource_id = field.datasource_id
                 local_name = field.original_name
                 worksheet_tableau_instance = field.tableau_instance
-                datasource_fields = dimensions.get(datasource_id, {})
                 clean_name = None
-                if datasource_fields:
-                    clean_name = datasource_fields.get(local_name, {}).get("clean_name")
-                    field.view_mapping_name = clean_name
-
+                # P1 - Derived fields, P2 - Dimensions, P3 - Calculated fields
                 if not clean_name:
-                    calculated_fields_fields = calculated_fields.get(datasource_id, {})
-                    if calculated_fields_fields:
-                        clean_name = calculated_fields_fields.get(
+                    datasource_fields = calculated_fields.get(datasource_id, {})
+                    if datasource_fields:
+                        clean_name = datasource_fields.get(
                             worksheet_tableau_instance, {}
                         ).get("clean_name")
                         field.view_mapping_name = clean_name
+
+                if not clean_name:
+                    datasource_fields = dimensions.get(datasource_id, {})
+                    clean_name = datasource_fields.get(local_name, {}).get("clean_name")
+                    field.view_mapping_name = clean_name
 
                 if not clean_name:
                     datasource_fields = calculated_fields.get(datasource_id, {})
@@ -747,31 +741,32 @@ class LookerElementGenerator:
             elif field.role == "measure":
                 datasource_id = field.datasource_id
                 local_name = field.original_name
-                datasource_fields = measures.get(datasource_id, {})
                 worksheet_tableau_instance = field.tableau_instance
                 clean_name = None
                 aggregation = None
-                if datasource_fields:
+                # P1 - Derived Fields P2- Measures P3- Calculated Fields
+                if not clean_name:
+                    datasource_fields = calculated_fields.get(datasource_id, {})
+                    if datasource_fields:
+                        clean_name = datasource_fields.get(
+                            worksheet_tableau_instance, {}
+                        ).get("clean_name")
+                        aggregation = None
+
+                if not clean_name:
+                    datasource_fields = measures.get(datasource_id, {})
                     clean_name = datasource_fields.get(local_name, {}).get("clean_name")
                     aggregation = datasource_fields.get(local_name, {}).get(
                         "aggregation"
                     )
 
                 if not clean_name:
-                    calculated_fields_fields = calculated_fields.get(datasource_id, {})
-                    if calculated_fields_fields:
-                        clean_name = calculated_fields_fields.get(
-                            worksheet_tableau_instance, {}
-                        ).get("clean_name")
-                        aggregation = None
-
-                if not clean_name:
                     datasource_fields = calculated_fields.get(datasource_id, {})
                     if datasource_fields:
-                        clean_name = calculated_fields.get(local_name, {}).get(
+                        clean_name = datasource_fields.get(local_name, {}).get(
                             "clean_name"
                         )
-                        aggregation = calculated_fields.get(local_name, {}).get(
+                        aggregation = datasource_fields.get(local_name, {}).get(
                             "aggregation"
                         )
 

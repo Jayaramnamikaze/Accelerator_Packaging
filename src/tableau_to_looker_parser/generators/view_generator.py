@@ -198,7 +198,8 @@ class ViewGenerator(BaseGenerator):
                 )
 
                 if references_aggregated_fields:
-                    print("references_aggregated_fields")
+                    # print("references_aggregated_fields")
+                    pass
 
                 converted_field = self._convert_calculated_field(
                     calc_field,
@@ -384,6 +385,9 @@ class ViewGenerator(BaseGenerator):
                 "lookml_type": lookml_type,  # Add LookML type for template
                 "datasource_id": calc_field.get("datasource_id", ""),
                 "local_name": calc_field.get("local_name", ""),
+                "tableau_instance": calc_field.get("tableau_instance", ""),
+                "aggregation": calc_field.get("aggregation", ""),
+                "is_derived": calc_field.get("is_derived", False),
             }
 
             count_measure_name = f"{field_name}_count_function"
@@ -681,6 +685,7 @@ TODO: Manual migration required - please convert this formula manually""",
             "datasource_id": calc_field.get("datasource_id", ""),
             "local_name": calc_field.get("local_name", ""),
             "default_format": calc_field.get("default_format", ""),
+            "is_derived": calc_field.get("is_derived", False),
         }
 
         logger.debug(
