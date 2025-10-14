@@ -134,9 +134,16 @@ class ViewGenerator(BaseGenerator):
             logger.warning(f"Could not resolve table for view: {view_name}")
             return None
 
-        actual_table_name = actual_table["name"]
-
         lookmlsqlconverter = create_converter(actual_table)
+
+        lookml_table_ref = self._format_table_name(table_ref)
+
+        if isinstance(lookmlsqlconverter, LookMLSQLConverter):
+            lookml_table_ref = lookmlsqlconverter.convert(lookml_table_ref)
+        else:
+            lookml_table_ref = lookml_table_ref
+
+        actual_table_name = actual_table["name"]
 
         table_dimensions = [
             dim
@@ -144,6 +151,13 @@ class ViewGenerator(BaseGenerator):
             if dim.get("table_name") == actual_table_name
             and not dim.get("is_internal", False)
         ]
+
+        for dim in table_dimensions:
+            if dim.get("sql_column"):
+                dim["sql_column"] = f"`{dim['sql_column'].strip('[]')}`"
+
+                if isinstance(lookmlsqlconverter, LookMLSQLConverter):
+                    dim["sql_column"] = lookmlsqlconverter.convert(dim["sql_column"])
 
         # Filter measures for this specific table
         table_measures = [
@@ -153,6 +167,14 @@ class ViewGenerator(BaseGenerator):
             and not measure.get("is_internal", False)
         ]
 
+        for mea in table_measures:
+            if mea.get("sql_column"):
+                mea["sql_column"] = f"`{mea['sql_column'].strip('[]')}`"
+
+                if isinstance(lookmlsqlconverter, LookMLSQLConverter):
+                    mea["dimension_reference"] = lookmlsqlconverter.convert(
+                        mea["dimension_reference"]
+                    )
         count_measures = self._generate_measures_for_filters(
             migration_data, actual_table_name, view_name
         )
@@ -202,15 +224,23 @@ class ViewGenerator(BaseGenerator):
                     pass
 
                 converted_field = self._convert_calculated_field(
-                    calc_field, view_name, all_calculated_fields_dict, count_measures,
-                    references_aggregated_fields
+                    calc_field,
+                    view_name,
+                    all_calculated_fields_dict,
+                    count_measures,
+                    references_aggregated_fields,
                 )
 
                 # <converted_field>
                 if isinstance(lookmlsqlconverter, LookMLSQLConverter):
-                    converted_field = convert_lookml_sql(
-                        lookmlsqlconverter, converted_field
-                    )
+                    if references_aggregated_fields:
+                        converted_field = convert_lookml_sql(
+                            lookmlsqlconverter, converted_field, True
+                        )
+                    else:
+                        converted_field = convert_lookml_sql(
+                            lookmlsqlconverter, converted_field
+                        )
 
                 if converted_field.get("name") == "rptmth_copy":
                     print("here")
@@ -257,7 +287,7 @@ class ViewGenerator(BaseGenerator):
 
         view_data = {
             "name": view_name,
-            "table_name": table_ref,
+            "table_name": lookml_table_ref,
             "dimensions": all_dimensions,  # All dimensions including hidden ones from calculated fields
             "measures": table_measures,
             "calculated_fields": table_calculated_fields,
@@ -766,7 +796,7 @@ TODO: Manual migration required - please convert this formula manually""",
             context = {
                 "view": SimpleNamespace(**view_data),
                 "view_name": self._clean_name(view_data["name"]),
-                "table_name": self._format_table_name(view_data["table_name"]),
+                "table_name": view_data["table_name"],
                 "dimensions": view_data["dimensions"],
                 "measures": view_data["measures"],
                 "calculated_fields": view_data["calculated_fields"],
