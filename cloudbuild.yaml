@@ -39,6 +39,34 @@ steps:
 
         echo "Updated version to: $$VERSION_FROM_TAG"
         grep -A5 -B5 "version" pyproject.toml || echo "Version file created"
+  # - name: python:3.11-slim
+  #   entrypoint: bash
+  #   args:
+  #     - -c
+  #     - |
+  #       set -e
+  #       echo "=== Installing system dependencies ==="
+  #       apt-get update && apt-get install -y curl
+
+  #       echo "=== Installing UV ==="
+  #       curl -LsSf https://astral.sh/uv/install.sh | sh
+
+  #       echo "=== Setting up UV path ==="
+  #       # Add UV to PATH (works regardless of where it installs)
+  #       export PATH="$$HOME/.local/bin:/root/.cargo/bin:$$PATH"
+
+  #       echo "=== Verifying UV installation ==="
+  #       which uv
+  #       uv --version
+
+  #       echo "=== Building package ==="
+  #       uv sync --frozen --python $(which python3.11)
+  #       uv build --python $(which python3.11)
+
+  #       echo "=== Build results ==="
+  #       ls -la dist/
+  #       echo "Built package with version: $(cat /workspace/version.txt)"
+
   - name: python:3.11-slim
     entrypoint: bash
     args:
@@ -60,12 +88,27 @@ steps:
         uv --version
 
         echo "=== Building package ==="
-        uv sync --frozen --python $(which python3.11)
+        # Use conditional logic to handle missing lockfile
+        if [ -f uv.lock ]; then
+          echo "Lockfile found. Running frozen sync..."
+          uv sync --frozen --python $(which python3.11)
+        else
+          echo "No lockfile found. Creating new lockfile..."
+          uv sync --python $(which python3.11)
+          uv lock
+        fi
+
+        echo "=== Running build ==="
         uv build --python $(which python3.11)
 
         echo "=== Build results ==="
-        ls -la dist/
-        echo "Built package with version: $(cat /workspace/version.txt)"
+        ls -la dist/ || echo "No dist/ directory found."
+        if [ -f /workspace/version.txt ]; then
+          echo "Built package with version: $(cat /workspace/version.txt)"
+        else
+          echo "version.txt not found"
+        fi
+
 
   - name: python:3.11-slim
     entrypoint: bash
