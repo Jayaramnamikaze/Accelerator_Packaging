@@ -82,7 +82,7 @@ class TableauChartRuleEngine:
         """Load and parse the YAML rules configuration."""
         try:
             if not self.config_path.exists():
-                self.logger.error(f"YAML config file not found: {self.config_path}")
+                # self.logger.error(f"YAML config file not found: {self.config_path}")
                 return {
                     "basic_chart_detection": {},
                     "fallback": self._get_default_fallback(),

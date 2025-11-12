@@ -5,7 +5,7 @@ Handles tokenization, parsing, and AST generation with comprehensive error handl
 
 import re
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from ..models.ast_schema import (
     ASTNode,
@@ -95,6 +95,10 @@ class FormulaLexer:
             (re.compile(pattern), token_type)
             for pattern, token_type in self.TOKEN_PATTERNS
         ]
+        self.field_metadata = None
+
+    def set_field_metadata(self, field_metadata: Dict[str, Dict[str, str]]):
+        self.field_metadata = field_metadata
 
     def tokenize(self, formula: str) -> List[Token]:
         """Tokenize a Tableau formula string."""
@@ -213,6 +217,11 @@ class FormulaParser:
 
         # Statistics
         self.stats = ParseStatistics()
+        self.field_metadata = None
+
+    def set_field_metadata(self, field_metadata: Dict[str, Dict[str, str]]):
+        """Set field metadata for the parser."""
+        self.field_metadata = field_metadata
 
     def _remove_comments(self, formula: str) -> str:
         """
@@ -1008,10 +1017,33 @@ class FormulaParser:
             conditional_count=conditional_count,
         )
 
+    def _sql_type_to_datatype(self, sql_type: str) -> DataType:
+        """Convert SQL type string to DataType enum."""
+        type_mapping = {
+            "DATE": DataType.DATE,
+            "TIMESTAMP": DataType.DATETIME,
+            "DATETIME": DataType.DATETIME,
+            "INTEGER": DataType.INTEGER,
+            "FLOAT": DataType.REAL,
+            "REAL": DataType.REAL,
+            "STRING": DataType.STRING,
+            "BOOLEAN": DataType.BOOLEAN,
+        }
+        return type_mapping.get(sql_type, DataType.UNKNOWN)
+
     def _infer_data_type(self, node: ASTNode) -> DataType:
         """Infer the data type of the expression."""
         if node.data_type:
             return node.data_type
+
+        if node.node_type == NodeType.FIELD_REF:
+            if self.field_metadata and node.field_name in self.field_metadata:
+                sql_type = (
+                    self.field_metadata[node.field_name].get("sql_type") or ""
+                ).upper()
+                # Map SQL type string to DataType enum
+                node.data_type = self._sql_type_to_datatype(sql_type)
+                return node.data_type
 
         if node.node_type == NodeType.ARITHMETIC:
             # Arithmetic operations typically return numbers

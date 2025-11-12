@@ -60,7 +60,7 @@ class MeasureHandler(BaseHandler):
             return 0.0
 
         # Check if this has a calculation - if so, defer to CalculatedFieldHandler
-        if data.get("calculation"):
+        if data.get("is_calculated"):
             return 0.0
 
         # High confidence for measures, especially quantitative
@@ -81,9 +81,15 @@ class MeasureHandler(BaseHandler):
         # Use the clean field name from v2 parser, fallback to cleaning raw_name for v1
         base_name = data.get("name") or self._clean_field_name(data["raw_name"])
 
-        # Get aggregation type
+        # Get aggregation type - handle None values
+        aggregation_str = data.get("aggregation")
+        if aggregation_str is None:
+            aggregation_str = "sum"  # Default to SUM if not specified
+        else:
+            aggregation_str = aggregation_str.lower()
+        
         aggregation = self.AGGREGATION_MAP.get(
-            data["aggregation"].lower(), AggregationType.SUM
+            aggregation_str, AggregationType.SUM
         )
 
         # CR #2 Fix: Generate proper measure name with total_ prefix for SUM aggregation
@@ -135,8 +141,14 @@ class MeasureHandler(BaseHandler):
                 json_data["measure"]["drill_down_default"] = True
 
         # Add calculation if present (goes to measure, not dimension)
-        if data.get("calculation"):
-            json_data["measure"]["sql"] = data["calculation"]
+        if data.get("is_calculated"):
+            if data.get("calculation_class") == "categorical-bin":
+                # Handle group/bin calculations differently if needed
+                json_data["measure"]["group_column"] = data["group_column"]
+                json_data["measure"]["group_new_bin"] = data["group_new_bin"]
+                json_data["measure"]["bins"] = data["bins"]
+            else:
+                json_data["measure"]["sql"] = data["calculation"]
 
         return json_data
 
@@ -223,8 +235,11 @@ class MeasureHandler(BaseHandler):
         parts = []
 
         # Add calculation if present
-        if data.get("calculation"):
-            parts.append(f"Calculation: {data['calculation']}")
+        if data.get("is_calculated"):
+            if data.get("calculation_class") == "categorical-bin":
+                parts.append("Calculated field: Group/Bin")
+            else:
+                parts.append(f"Calculation: {data['calculation']}")
 
         # Add format if present
         if data.get("number_format"):

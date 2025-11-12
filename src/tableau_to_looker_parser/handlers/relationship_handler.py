@@ -68,13 +68,15 @@ class RelationshipHandler(BaseHandler):
         # Process based on relationship type
         relationship_type = data["relationship_type"]
 
+        # Extract expression data (not needed for Union relationships)
         if relationship_type != "union":
-            # Extract expression data
             expr = data["expression"]
             expr_data = {
-                "operator": expr["operator"],
-                "expressions": sorted(expr["expressions"]),
+                "expressions": sorted(expr.get("expressions", [])),
             }
+            # Only include operator if it exists (not all relationship types have one)
+            if "operator" in expr:
+                expr_data["operator"] = expr["operator"]
 
         # For physical joins
         if relationship_type == "physical":
@@ -169,10 +171,10 @@ class RelationshipHandler(BaseHandler):
 
             for table_info in data["tables"]:
                 table_name = table_info["table"]
-
                 if table_name not in seen_tables:
                     unique_tables.append(table_name)
                     seen_tables.add(table_name)
+
             return {
                 "relationship_type": "union",
                 "name": data.get("name", "Union"),
@@ -217,6 +219,7 @@ class RelationshipHandler(BaseHandler):
         for rel in relationships:
             # Create key from normalized data
             if rel["relationship_type"] == "union":
+                # Union relationships don't have expressions
                 name = rel.get("name", "Union")
                 tables = sorted(rel.get("tables", []))
                 key = f"union:{name}:{','.join(tables)}"
@@ -227,8 +230,10 @@ class RelationshipHandler(BaseHandler):
                 operator = expr.get("operator", "")
                 if rel["relationship_type"] == "physical":
                     key = f"physical:{rel['join_type']}:{operator}:{','.join(expressions)}"
-                else:
+                elif rel["relationship_type"] == "logical":
                     key = f"logical:{operator}:{','.join(expressions)}"
+                else:
+                    key = f"{rel['relationship_type']}:{operator}:{','.join(expressions)}"
 
             if key not in unique_relationships:
                 unique_relationships[key] = rel

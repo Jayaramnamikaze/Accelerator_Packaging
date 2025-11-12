@@ -94,8 +94,14 @@ class ParameterHandler(BaseHandler):
             settings["date"] = DateParameterSettings(**date_settings)
         elif param_type == ParameterType.RANGE:
             if data.get("range"):
+                range_data = data["range"].copy()
+                # Handle None values - convert to empty string or skip None fields
+                if range_data.get("min") is None:
+                    range_data["min"] = ""
+                if range_data.get("max") is None:
+                    range_data["max"] = ""
                 settings["range"] = RangeParameterSettings(
-                    **data["range"], inclusive_min=True, inclusive_max=True
+                    **range_data, inclusive_min=True, inclusive_max=True
                 )
         elif param_type == ParameterType.LIST:
             if data.get("values"):
