@@ -17,6 +17,7 @@ from slugify import slugify
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tableau_to_looker_parser.core.migration_engine import MigrationEngine
+from converter import transform_json
 
 
 def validate_zip_file(file_path):
@@ -180,6 +181,15 @@ def generate_json_from_twb(twb_file_path: str, output_dir: str = "output") -> di
         if output_path.exists():
             print(f"\n📊 Generated JSON file: {output_path}")
             print(f"   File size: {output_path.stat().st_size / 1024:.2f} KB")
+            
+            # Transform the JSON to extract only specified fields
+            print(f"\n🔄 Transforming JSON to extract specified fields...")
+            try:
+                transform_json(str(output_path), str(output_path), quiet=True)
+                print(f"✅ JSON transformation completed")
+            except Exception as e:
+                print(f"⚠️  Warning: JSON transformation failed: {e}")
+                print(f"   Original JSON file is still available at: {output_path}")
         
         return result
     except Exception as e:
@@ -660,7 +670,7 @@ def download_workbooks_from_server(
                 
                 generate_json_from_twb(str(twb_file), str(file_output_dir))
                 json_files.append(str(file_output_dir / "processed_pipeline_output.json"))
-                print(f"  ✅ Successfully generated JSON for {twb_file.name}")
+                print(f"  ✅ Successfully generated and transformed JSON for {twb_file.name}")
             except Exception as e:
                 import traceback
                 error_traceback = traceback.format_exc()
