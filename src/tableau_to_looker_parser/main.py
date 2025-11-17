@@ -17,7 +17,7 @@ from slugify import slugify
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tableau_to_looker_parser.core.migration_engine import MigrationEngine
-from converter import transform_json
+from tableau_to_looker_parser.converter import transform_json
 
 
 def validate_zip_file(file_path):
