@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: tableau-to-looker-parser
-Version: 0.1.0
+Version: 2.0.2
 Summary: Core library for Tableau to LookML migration
 Author-email: Your Name <your.email@example.com>
 Keywords: tableau,looker,lookml,migration,bi,business-intelligence
